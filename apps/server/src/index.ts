@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { db, users } from './db/schema'; // ✅ Removed .js
-import { registerUser, loginUser } from './modules/users/user.controller'; // ✅ Removed .js
-import { logProblem, getUserProgress, deleteProblem } from './modules/dsa/dsa.controller';
+import { db, users } from './db/schema'; 
+import { registerUser, loginUser } from './modules/users/user.controller'; 
+import { logProblem, getUserProgress, updateProblem, deleteProblem } from './modules/dsa/dsa.controller';
 import { verifyToken } from './middleware/authGuard';
 import { eq } from 'drizzle-orm';
 
@@ -21,7 +21,17 @@ app.post('/api/auth/login', loginUser);
 // DSA Progress Routes
 app.post('/api/dsa', verifyToken, logProblem);
 app.get('/api/dsa', verifyToken, getUserProgress);
+app.put('/api/dsa/:id', verifyToken, updateProblem); 
 app.delete('/api/dsa/:id', verifyToken, deleteProblem);
+
+// Mock Drives Route to fix Frontend 404s
+app.get('/api/drives', verifyToken, (req, res) => {
+  res.json([
+    { id: 1, company: "TechNova Solutions", role: "Frontend Developer", package: "12 LPA", deadline: "Oct 15", status: "Open" },
+    { id: 2, company: "DataSphere", role: "Data Analyst", package: "9 LPA", deadline: "Oct 18", status: "Applied" },
+    { id: 3, company: "CyberShield Inc.", role: "Security Associate", package: "15 LPA", deadline: "Oct 20", status: "Open" }
+  ]);
+});
 
 // Current User Route
 app.get('/api/auth/me', verifyToken, async (req: any, res) => {
