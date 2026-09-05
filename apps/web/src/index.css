@@ -2,3 +2,29 @@
 
 /* This tells Tailwind v4 to trigger dark mode when the "dark" class is applied to the HTML tag */
 @variant dark (&:where(.dark, .dark *));
+
+/* Custom Scrollbar Styles to match the dark theme */
+::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090d16; /* Deep dark background matching the card container */
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b; /* Dark slate thumb */
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8b5cf6; /* Purple highlight matching HireSphere theme buttons */
+}
+
+/* Firefox support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1e293b #090d16;
+}

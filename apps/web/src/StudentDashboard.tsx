@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuthStore } from "./store/authStore";
+import DsaTracker from "./DsaTracker";
 
 export default function StudentDashboard() {
   const token = useAuthStore((state: any) => state.token);
@@ -116,6 +117,9 @@ export default function StudentDashboard() {
           )}
         </div>
       </div>
+
+      {/* DSA Tracker Section */}
+      <DsaTracker />
 
     </div>
   );
