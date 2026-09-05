@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { db, users } from './db/schema'; // ✅ Removed .js
 import { registerUser, loginUser } from './modules/users/user.controller'; // ✅ Removed .js
+import { logProblem, getUserProgress, deleteProblem } from './modules/dsa/dsa.controller';
 import { verifyToken } from './middleware/authGuard';
 import { eq } from 'drizzle-orm';
 
@@ -16,6 +17,13 @@ app.use(express.json());
 // API Routes
 app.post('/api/auth/register', registerUser);
 app.post('/api/auth/login', loginUser);
+
+// DSA Progress Routes
+app.post('/api/dsa', verifyToken, logProblem);
+app.get('/api/dsa', verifyToken, getUserProgress);
+app.delete('/api/dsa/:id', verifyToken, deleteProblem);
+
+// Current User Route
 app.get('/api/auth/me', verifyToken, async (req: any, res) => {
   try {
     const userResult = await db
