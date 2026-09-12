@@ -35,10 +35,18 @@ const calculateAndSaveStreak = async (userId: string) => {
 
 export const logProblem = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { problemTitle, problemUrl, difficulty } = req.body;
+    const { problemTitle, problemUrl, difficulty, category, language } = req.body;
     const userId = String(req.user!.id); 
 
-    await db.insert(dsaLogs).values({ userId, problemTitle, problemUrl, difficulty });
+    await db.insert(dsaLogs).values({ 
+      userId, 
+      problemTitle, 
+      problemUrl, 
+      difficulty,
+      category: category || 'General',
+      language: language || 'Python'
+    });
+    
     const currentStreak = await calculateAndSaveStreak(userId);
 
     res.status(201).json({ message: "Problem logged!", currentStreak });
@@ -64,7 +72,7 @@ export const getUserProgress = async (req: AuthRequest, res: Response): Promise<
 export const updateProblem = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id: rawId } = req.params;
-    const { problemTitle, problemUrl, difficulty } = req.body;
+    const { problemTitle, problemUrl, difficulty, category, language } = req.body;
     const userId = String(req.user!.id); 
     
     if (!rawId || Array.isArray(rawId)) {
@@ -74,7 +82,13 @@ export const updateProblem = async (req: AuthRequest, res: Response): Promise<vo
 
     const id = rawId;
 
-    await db.update(dsaLogs).set({ problemTitle, problemUrl, difficulty })
+    await db.update(dsaLogs).set({ 
+      problemTitle, 
+      problemUrl, 
+      difficulty,
+      category,
+      language 
+    })
       .where(and(eq(dsaLogs.id, id), eq(dsaLogs.userId, userId)));
       
     res.status(200).json({ message: "Problem updated successfully!" });

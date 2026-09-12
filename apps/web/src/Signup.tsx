@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuthStore } from "./store/authStore";
 
 export default function Signup() {
   const [email, setEmail] = useState("");
@@ -7,13 +8,24 @@ export default function Signup() {
   const [role, setRole] = useState("STUDENT"); 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   
   const navigate = useNavigate();
+  const logout = useAuthStore((state) => state.logout); // 1. Access logout store action
+
+  // 2. Wipe active session on page mount
+  useEffect(() => {
+    if (logout) {
+      logout();
+    } else {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+    }
+  }, [logout]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 1. Regex feature for email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       setError("Please enter a valid email format.");
@@ -26,9 +38,9 @@ export default function Signup() {
     }
     
     setError(""); 
+    setIsLoading(true);
 
     try {
-      // 2. Original Database Connection (Untouched)
       const response = await fetch("http://localhost:5000/api/auth/register", {
         method: "POST",
         headers: {
@@ -47,12 +59,16 @@ export default function Signup() {
         throw new Error(data.error || "Failed to create account");
       }
 
-      alert("Account created successfully!");
-      // SECURITY FIX: replace: true so back button won't return to signup
+      // Ensure logout state persists before redirect
+      if (logout) logout();
+
+      alert("Account created successfully! Please log in.");
       navigate("/login", { replace: true });
 
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -83,6 +99,7 @@ export default function Signup() {
               className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-3 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
               placeholder="student@university.edu"
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -95,6 +112,7 @@ export default function Signup() {
               className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-3 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors"
               placeholder="••••••••"
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -105,6 +123,7 @@ export default function Signup() {
               checked={showPassword} 
               onChange={() => setShowPassword(!showPassword)} 
               className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-purple-600 focus:ring-purple-600 cursor-pointer" 
+              disabled={isLoading}
             />
             <label htmlFor="showPassSignup" className="ml-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer">Show Password</label>
           </div>
@@ -115,16 +134,20 @@ export default function Signup() {
               value={role}
               onChange={(e) => setRole(e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors cursor-pointer"
+              disabled={isLoading}
             >
               <option value="STUDENT">Student</option>
               <option value="COORDINATOR">Placement Coordinator</option>
-              {/* NEW ADMIN ROLE */}
               <option value="ADMIN">Administrator / Dean</option>
             </select>
           </div>
 
-          <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-colors mt-4 shadow-lg shadow-purple-500/20">
-            Create Account
+          <button 
+            type="submit" 
+            disabled={isLoading}
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-colors mt-4 shadow-lg shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? "Creating Account..." : "Create Account"}
           </button>
         </form>
 

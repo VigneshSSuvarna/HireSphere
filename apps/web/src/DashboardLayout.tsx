@@ -13,15 +13,12 @@ export default function DashboardLayout() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [activeUser, setActiveUser] = useState<{email: string, role: string} | null>(null);
 
-  // 1. Ensure only signed-in accounts get access (AGGRESSIVE CHECK)
   useEffect(() => {
     const storedUser = localStorage.getItem("hiresphere_active_user");
     
-    // Check both local storage and the new Zustand auth store
     if (!storedUser && !authUser) {
       navigate("/login", { replace: true }); 
     } else {
-      // Prefer the local storage parsed user, fallback to Zustand user
       setActiveUser(storedUser ? JSON.parse(storedUser) : authUser);
     }
   }, [navigate, location.pathname, authUser]); 
@@ -35,6 +32,7 @@ export default function DashboardLayout() {
     if (location.pathname.includes("admin")) return "Admin Overview";
     if (location.pathname.includes("scanner")) return "ATS Scanner Tools";
     if (location.pathname.includes("profile")) return "Profile Settings";
+    if (location.pathname.includes("dsa")) return "DSA Practice Tracker";
     return "Student Overview";
   };
 
@@ -42,16 +40,10 @@ export default function DashboardLayout() {
     return email.substring(0, 2).toUpperCase();
   };
 
-  // 4. Handle Logout (Safely combined Zustand & LocalStorage)
   const handleLogout = () => {
-    // 1. Clear Zustand global state
     if (logout) logout();
-    
-    // 2. Clear browser local storage
     localStorage.removeItem("hiresphere_active_user");
     localStorage.removeItem("hiresphere_token");
-    
-    // 3. Securely redirect
     navigate("/login", { replace: true });
   };
 
@@ -60,6 +52,7 @@ export default function DashboardLayout() {
       { name: "My Workspace", path: "/dashboard", icon: "🎓" },
       { name: "Resume Scanner", path: "/dashboard/scanner", icon: "📄" }, 
       { name: "Job Tracker", path: "#", icon: "📊" },
+      { name: "DSA Tracker", path: "/dashboard/dsa", icon: "🧩" },
     ],
     coordinator: [
       { name: "Coordinator Portal", path: "/dashboard/coordinator", icon: "👥" },

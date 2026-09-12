@@ -24,5 +24,7 @@ export const dsaLogs = pgTable('dsa_logs', {
   problemTitle: text('problem_title').notNull(),
   problemUrl: text('problem_url').notNull(),
   difficulty: difficultyEnum('difficulty').notNull(),
+  category: text('category').default('General').notNull(),
+  language: text('language').default('Python').notNull(),
   completedAt: timestamp('completed_at').defaultNow().notNull(),
 });
