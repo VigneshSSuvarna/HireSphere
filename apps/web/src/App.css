@@ -182,3 +182,16 @@
     border-right-color: var(--border);
   }
 }
+
+/* Added for LeetCode Gauge Rotation */
+@keyframes spinOnce {
+  0% {
+    transform: rotate(-90deg) scale(0.9);
+  }
+  50% {
+    transform: rotate(270deg) scale(1.05);
+  }
+  100% {
+    transform: rotate(-90deg) scale(1);
+  }
+}

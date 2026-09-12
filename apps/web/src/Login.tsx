@@ -10,10 +10,7 @@ export default function Login() {
   
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
-  const token = useAuthStore((state) => state.token);
-  const user = useAuthStore((state) => state.user); // Read user from Zustand
 
-  // Helper function for role-based redirects
   const redirectByRole = (userRole?: string) => {
     if (userRole === "COORDINATOR") {
       navigate("/dashboard/coordinator", { replace: true });
@@ -23,13 +20,6 @@ export default function Login() {
       navigate("/dashboard", { replace: true });
     }
   };
-
-  // Redirect if already authenticated (e.g. on page load)
-  useEffect(() => {
-    if (token && user) {
-      redirectByRole(user.role);
-    }
-  }, [token, user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,13 +44,11 @@ export default function Login() {
         throw new Error(data.error || "Login failed");
       }
 
-      // Save into Zustand
       setAuth(
         { id: data.user.id, email: data.user.email, role: data.user.role }, 
         data.token
       );
 
-      // Role-based routing
       redirectByRole(data.user.role);
 
     } catch (err: any) {

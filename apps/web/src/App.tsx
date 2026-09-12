@@ -11,7 +11,7 @@ import Home from "./Home";
 import ProfileSettings from "./ProfileSettings";
 import PortalSelection from "./PortalSelection";
 import ProtectedRoute from "./ProtectedRoute";
-import DsaTracker from "./DsaTracker"; // 1. Imported DsaTracker
+import { DsaTracker } from "./DsaTracker"; // Changed to named import
 
 export default function App() {
   
@@ -41,7 +41,7 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<DashboardLayout />}>
              <Route index element={<StudentDashboard />} />
-             <Route path="dsa" element={<DsaTracker />} /> {/* 2. Added DSA route */}
+             <Route path="dsa" element={<DsaTracker />} />
              <Route path="scanner" element={<ResumeScanner />} />
              <Route path="coordinator" element={<CoordinatorDashboard />} />
              <Route path="admin" element={<DeanDashboard />} />
