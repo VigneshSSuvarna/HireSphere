@@ -17,18 +17,17 @@ import PortalSelection from './PortalSelection';
 import ProtectedRoute from './ProtectedRoute';
 import { DsaTracker } from './DsaTracker';
 import { ToastProvider } from './components/Toast';
+import DevUiShowcase from './DevUiShowcase';
 
 export default function App() {
   useEffect(() => {
-    const savedTheme = localStorage.getItem('hiresphere_theme') || 'dark';
-    if (!localStorage.getItem('hiresphere_theme')) {
-      localStorage.setItem('hiresphere_theme', 'dark');
+    const saved = localStorage.getItem('hiresphere_theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = saved || (prefersDark ? 'dark' : 'light');
+    if (!saved) {
+      localStorage.setItem('hiresphere_theme', theme);
     }
-    if (savedTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', theme === 'dark');
   }, []);
 
   return (
@@ -40,6 +39,7 @@ export default function App() {
           <Route path="/portals" element={<PortalSelection />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/dev/ui" element={<DevUiShowcase />} />
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -25,22 +26,41 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }, 3500);
   }, []);
 
+  const dismiss = (id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0">
+      <div
+        aria-live="polite"
+        className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto px-4 py-3 rounded-xl shadow-xl border text-sm font-medium transition-all ${
-              toast.type === 'success'
-                ? 'bg-emerald-950/95 border-emerald-500/40 text-emerald-200'
-                : toast.type === 'error'
-                ? 'bg-red-950/95 border-red-500/40 text-red-200'
-                : 'bg-slate-900/95 border-purple-500/40 text-slate-100'
-            }`}
+            style={{ boxShadow: 'var(--popover-shadow)' }}
+            className="pointer-events-auto flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-[8px] bg-surface border border-hairline text-[13px] text-ink transition-opacity duration-150"
           >
-            {toast.message}
+            <div className="flex items-center gap-2.5 min-w-0">
+              {toast.type === 'success' ? (
+                <CheckCircle2 className="h-4 w-4 text-status-offered shrink-0" strokeWidth={1.75} />
+              ) : toast.type === 'error' ? (
+                <AlertCircle className="h-4 w-4 text-status-rejected shrink-0" strokeWidth={1.75} />
+              ) : (
+                <Info className="h-4 w-4 text-accent shrink-0" strokeWidth={1.75} />
+              )}
+              <span className="truncate">{toast.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => dismiss(toast.id)}
+              aria-label="Dismiss notification"
+              className="text-muted hover:text-ink cursor-pointer shrink-0"
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </button>
           </div>
         ))}
       </div>
