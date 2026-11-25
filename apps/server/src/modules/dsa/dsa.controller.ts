@@ -1,7 +1,8 @@
-import { Response } from 'express';
-import { db, dsaLogs, users } from '../../db/schema';
+import type { Response } from 'express';
+import { db } from '../../db/index.js';
+import { dsaLogs, users } from '../../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
-import { AuthRequest } from '../../middleware/authGuard';
+import type { AuthRequest } from '../../middleware/authGuard.js';
 
 const calculateAndSaveStreak = async (userId: string) => {
   const logs = await db.select().from(dsaLogs)

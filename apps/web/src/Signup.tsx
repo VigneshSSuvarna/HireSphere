@@ -1,26 +1,20 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "./store/authStore";
+import { api } from "./lib/api";
 
 export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("STUDENT"); 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
   const navigate = useNavigate();
-  const logout = useAuthStore((state) => state.logout); // 1. Access logout store action
+  const logout = useAuthStore((state) => state.logout);
 
-  // 2. Wipe active session on page mount
   useEffect(() => {
-    if (logout) {
-      logout();
-    } else {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-    }
+    logout();
   }, [logout]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,32 +35,18 @@ export default function Signup() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ 
-          email, 
-          password, 
-          role 
-        }),
-      });
+      await api.post<{ message: string }>(
+        "/api/auth/register",
+        { email, password },
+        { skipAuth: true }
+      );
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create account");
-      }
-
-      // Ensure logout state persists before redirect
-      if (logout) logout();
-
+      logout();
       alert("Account created successfully! Please log in.");
       navigate("/login", { replace: true });
 
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create account");
     } finally {
       setIsLoading(false);
     }
@@ -128,18 +108,8 @@ export default function Signup() {
             <label htmlFor="showPassSignup" className="ml-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer">Show Password</label>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">I am a...</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors cursor-pointer"
-              disabled={isLoading}
-            >
-              <option value="STUDENT">Student</option>
-              <option value="COORDINATOR">Placement Coordinator</option>
-              <option value="ADMIN">Administrator / Dean</option>
-            </select>
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400">
+            Public registration creates a <span className="font-semibold text-purple-600 dark:text-purple-400">Student</span> account. Coordinator and Admin roles are assigned by an administrator.
           </div>
 
           <button 

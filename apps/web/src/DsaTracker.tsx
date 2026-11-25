@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useAuthStore } from './store/authStore';
+import { api } from './lib/api';
 
 export interface DsaLog {
   id: string;
@@ -50,7 +50,6 @@ const PROGRAMMING_LANGUAGES = [
 ];
 
 export const DsaTracker: React.FC = () => {
-  const token = useAuthStore((state: any) => state.token);
   const [logs, setLogs] = useState<DsaLog[]>([]);
   const [currentStreak, setCurrentStreak] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
@@ -85,18 +84,7 @@ export const DsaTracker: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('http://localhost:5000/api/dsa', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to fetch DSA logs');
-      }
-
-      const data = await res.json();
+      const data = await api.get<{ logs: DsaLog[]; currentStreak: number }>('/api/dsa');
       setLogs(data.logs || []);
       setCurrentStreak(data.currentStreak || 0);
     } catch (err: any) {
@@ -107,10 +95,8 @@ export const DsaTracker: React.FC = () => {
   };
 
   useEffect(() => {
-    if (token) {
-      fetchProgress();
-    }
-  }, [token]);
+    fetchProgress();
+  }, []);
 
   const handleDifficultyClick = (diff: 'EASY' | 'MEDIUM' | 'HARD') => {
     setSelectedDifficulty((prev) => (prev === diff ? 'ALL' : diff));
@@ -132,33 +118,24 @@ export const DsaTracker: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('http://localhost:5000/api/dsa', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          problemTitle: formData.problemTitle,
-          problemUrl: formData.problemUrl,
-          difficulty: formData.difficulty,
-          category: formData.category,
-          language: resolvedLanguage,
-        }),
+      await api.post('/api/dsa', {
+        problemTitle: formData.problemTitle,
+        problemUrl: formData.problemUrl,
+        difficulty: formData.difficulty,
+        category: formData.category,
+        language: resolvedLanguage,
       });
 
-      if (res.ok) {
-        setFormData({
-          problemTitle: '',
-          problemUrl: '',
-          difficulty: 'EASY',
-          category: 'Arrays & Hashing',
-          language: 'C++',
-          customLanguage: '',
-        });
-        setIsModalOpen(false);
-        fetchProgress();
-      }
+      setFormData({
+        problemTitle: '',
+        problemUrl: '',
+        difficulty: 'EASY',
+        category: 'Arrays & Hashing',
+        language: 'C++',
+        customLanguage: '',
+      });
+      setIsModalOpen(false);
+      fetchProgress();
     } catch (err) {
       console.error('Failed to add problem log', err);
     } finally {
@@ -287,17 +264,9 @@ export const DsaTracker: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/dsa/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (res.ok) {
-        setLogs((prev) => prev.filter((item) => item.id !== id));
-        fetchProgress();
-      }
+      await api.delete(`/api/dsa/${id}`);
+      setLogs((prev) => prev.filter((item) => item.id !== id));
+      fetchProgress();
     } catch (err) {
       console.error('Failed to delete log', err);
     }

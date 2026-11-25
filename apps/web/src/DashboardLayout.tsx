@@ -1,29 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore } from "./store/authStore";
 
 export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  
-  // Zustand State Management
-  const authUser = useAuthStore((state: any) => state.user);
-  const logout = useAuthStore((state: any) => state.logout);
-  
+
+  const activeUser = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [activeUser, setActiveUser] = useState<{email: string, role: string} | null>(null);
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem("hiresphere_active_user");
-    
-    if (!storedUser && !authUser) {
-      navigate("/login", { replace: true }); 
-    } else {
-      setActiveUser(storedUser ? JSON.parse(storedUser) : authUser);
-    }
-  }, [navigate, location.pathname, authUser]); 
-
-  if (!activeUser) return null; 
+  if (!activeUser) return null;
 
   const activeRole = activeUser.role.toLowerCase();
 
@@ -41,9 +29,7 @@ export default function DashboardLayout() {
   };
 
   const handleLogout = () => {
-    if (logout) logout();
-    localStorage.removeItem("hiresphere_active_user");
-    localStorage.removeItem("hiresphere_token");
+    logout();
     navigate("/login", { replace: true });
   };
 

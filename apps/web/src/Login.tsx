@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom"; 
-import { useAuthStore } from "./store/authStore";
+import { useAuthStore, type User } from "./store/authStore";
+import { api, getDashboardPathForRole } from "./lib/api";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -10,16 +11,6 @@ export default function Login() {
   
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
-
-  const redirectByRole = (userRole?: string) => {
-    if (userRole === "COORDINATOR") {
-      navigate("/dashboard/coordinator", { replace: true });
-    } else if (userRole === "ADMIN" || userRole === "DEAN") {
-      navigate("/dashboard/admin", { replace: true });
-    } else {
-      navigate("/dashboard", { replace: true });
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,27 +23,17 @@ export default function Login() {
     }
     
     try {
-      const response = await fetch("http://localhost:5000/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Login failed");
-      }
-
-      setAuth(
-        { id: data.user.id, email: data.user.email, role: data.user.role }, 
-        data.token
+      const data = await api.post<{ token: string; user: User }>(
+        "/api/auth/login",
+        { email, password },
+        { skipAuth: true }
       );
 
-      redirectByRole(data.user.role);
+      setAuth(data.user, data.token);
+      navigate(getDashboardPathForRole(data.user.role), { replace: true });
 
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Login failed");
     }
   };
 

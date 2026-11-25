@@ -1,34 +1,21 @@
 import { useState, useEffect } from "react";
-import { useAuthStore } from "./store/authStore";
+import { api } from "./lib/api";
 
 export default function StudentDashboard() {
-  const token = useAuthStore((state: any) => state.token);
   const [activeDrives, setActiveDrives] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Attempt to fetch live data from the backend using the secure token
-    fetch("http://localhost:5000/api/drives", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => {
-      if (!res.ok) throw new Error("Endpoint not ready");
-      return res.json();
-    })
-    .then(data => {
-      setActiveDrives(data);
-      setIsLoading(false);
-    })
-    .catch(() => {
-      console.warn("⚠️ Backend /api/drives not built yet. Loading mock data fallback.");
-      setActiveDrives([
-        { id: 1, company: "TechNova Solutions", role: "Frontend Developer", package: "12 LPA", deadline: "Oct 15", status: "Open" },
-        { id: 2, company: "DataSphere", role: "Data Analyst", package: "9 LPA", deadline: "Oct 18", status: "Applied" },
-        { id: 3, company: "CyberShield Inc.", role: "Security Associate", package: "15 LPA", deadline: "Oct 20", status: "Open" },
-      ]);
-      setIsLoading(false);
-    });
-  }, [token]);
+    api.get<any[]>("/api/drives")
+      .then((data) => {
+        setActiveDrives(data);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        setActiveDrives([]);
+        setIsLoading(false);
+      });
+  }, []);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">

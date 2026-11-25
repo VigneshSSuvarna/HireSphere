@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useAuthStore } from "./store/authStore";
 
 export default function PortalSelection() {
-  
-  // STRICT SECURITY: Destroy login session if they return to the Portals page
+  const logout = useAuthStore((state) => state.logout);
+
   useEffect(() => {
-    localStorage.removeItem("hiresphere_active_user");
-    localStorage.removeItem("hiresphere_token");
-  }, []);
+    logout();
+  }, [logout]);
 
   const portals = [
     {

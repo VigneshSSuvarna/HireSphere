@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useAuthStore } from "./store/authStore";
 
 export default function Home() {
-  
-  // STRICT SECURITY: Destroy login session if they return to the Home page
+  const logout = useAuthStore((state) => state.logout);
+
   useEffect(() => {
-    localStorage.removeItem("hiresphere_active_user");
-    localStorage.removeItem("hiresphere_token");
-  }, []);
+    logout();
+  }, [logout]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300">
