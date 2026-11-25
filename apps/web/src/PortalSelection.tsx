@@ -1,96 +1,129 @@
-import { useEffect } from "react";
-import { Link } from "react-router-dom";
-import { useAuthStore } from "./store/authStore";
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { useAuthStore } from './store/authStore';
+import { BrandMark } from './components/BrandMark';
+import { Button } from './components/ui';
+
+type PortalRole = 'STUDENT' | 'COORDINATOR' | 'ADMIN';
+
+const PORTALS: Array<{
+  role: PortalRole;
+  title: string;
+  summary: string;
+  canSignup: boolean;
+}> = [
+  {
+    role: 'STUDENT',
+    title: 'Student Workspace',
+    summary: 'Browse eligible campus drives, track applications, scan PDF resumes, and log DSA practice.',
+    canSignup: true,
+  },
+  {
+    role: 'COORDINATOR',
+    title: 'Placement Coordinator',
+    summary: 'Create drives, update applicant round statuses, filter the student database, and export CSVs.',
+    canSignup: false,
+  },
+  {
+    role: 'ADMIN',
+    title: 'Dean & Admin',
+    summary: 'Review department placement rates, manage user roles, maintain the master schedule, and view audit logs.',
+    canSignup: false,
+  },
+];
 
 export default function PortalSelection() {
   const logout = useAuthStore((state) => state.logout);
+  const navigate = useNavigate();
+  const [selected, setSelected] = useState<PortalRole>('STUDENT');
 
   useEffect(() => {
     logout();
   }, [logout]);
 
-  const portals = [
-    {
-      title: "Student Workspace",
-      role: "STUDENT",
-      icon: "🎓",
-      description:
-        "Access active campus drives, run ATS resume scans, track applications, and manage your placement portfolio.",
-      actionText: "ENTER WORKSPACE →",
-      path: "/login",
-    },
-    {
-      title: "Placement Coordinator",
-      role: "COORDINATOR",
-      icon: "🏢",
-      description:
-        "Manage campus placement drives, review registered students, coordinate schedules, and export placement reports.",
-      actionText: "ENTER PORTAL →",
-      path: "/login",
-    },
-    {
-      title: "Admin Dashboard",
-      role: "ADMIN",
-      icon: "⚙️",
-      description:
-        "Oversee universal placement analytics, manage master schedules, monitor system logs, and control access.",
-      actionText: "ENTER COMMAND CENTER →",
-      path: "/login",
-    },
-  ];
+  const activePortal = PORTALS.find((p) => p.role === selected) || PORTALS[0];
 
   return (
-    <div className="min-h-screen bg-[#070b14] flex items-center justify-center p-4 md:p-8 transition-colors duration-300">
-      <div className="max-w-5xl w-full bg-white dark:bg-slate-900 rounded-3xl p-8 md:p-12 shadow-2xl border border-slate-200/20 dark:border-slate-800 text-center transition-colors duration-300">
-        
-        <div className="w-14 h-14 bg-gradient-to-tr from-purple-600 to-indigo-500 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-purple-500/30 mx-auto mb-6">
-          HS
-        </div>
-
-        <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Welcome to HireSphere
-        </h1>
-        <p className="text-slate-500 dark:text-slate-400 text-sm md:text-base mt-2 mb-10">
-          Please select your profile to enter your customized portal.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-          {portals.map((portal) => (
-            <div
-              key={portal.title}
-              className="bg-slate-50 dark:bg-slate-950/60 hover:bg-purple-50/40 dark:hover:bg-purple-950/20 border border-slate-200/80 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-500/40 rounded-2xl p-6 transition-all duration-200 hover:shadow-lg flex flex-col justify-between group"
-            >
-              <div>
-                <div className="text-2xl mb-4 bg-white dark:bg-slate-900 w-12 h-12 rounded-xl flex items-center justify-center shadow-sm border border-slate-200 dark:border-slate-800 group-hover:scale-105 transition-transform">
-                  {portal.icon}
-                </div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                  {portal.title}
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 mb-6 leading-relaxed">
-                  {portal.description}
-                </p>
-              </div>
-              <Link
-                to={portal.path}
-                className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 tracking-wider flex items-center gap-1 uppercase transition-colors pt-2 border-t border-slate-200/60 dark:border-slate-800/60"
-              >
-                {portal.actionText}
-              </Link>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-10 pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs text-slate-400">
-          <Link
-            to="/"
-            className="hover:text-purple-600 dark:hover:text-purple-400 transition-colors font-medium flex items-center gap-1"
-          >
-            ← Back to Home
+    <div className="min-h-screen bg-paper text-ink grid grid-cols-1 lg:grid-cols-12">
+      {/* Left: Role Radio List */}
+      <div className="lg:col-span-7 flex flex-col justify-between p-6 sm:p-12 bg-surface">
+        <div>
+          <Link to="/" className="inline-flex items-center gap-1.5 text-[13px] text-muted hover:text-ink">
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Back to overview
           </Link>
-          <p>HireSphere Campus Portal</p>
         </div>
 
+        <div className="max-w-md w-full mx-auto py-10 space-y-6">
+          <div>
+            <h1 className="font-display text-[28px] font-medium text-ink tracking-[-0.015em]">
+              Select your portal
+            </h1>
+            <p className="text-[14px] text-muted mt-1">
+              Choose the workspace that matches your Training &amp; Placement role.
+            </p>
+          </div>
+
+          <div role="radiogroup" aria-label="Portal role" className="space-y-2.5">
+            {PORTALS.map((portal) => {
+              const isSelected = selected === portal.role;
+              return (
+                <button
+                  key={portal.role}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  onClick={() => setSelected(portal.role)}
+                  className={`w-full text-left p-4 rounded-[8px] border transition-colors duration-150 cursor-pointer ${
+                    isSelected
+                      ? 'border-accent bg-accent-soft'
+                      : 'border-hairline bg-surface hover:bg-subtle/60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[14px] font-semibold text-ink">{portal.title}</span>
+                    <span
+                      className={`h-4 w-4 rounded-full border flex items-center justify-center ${
+                        isSelected ? 'border-accent' : 'border-hairline'
+                      }`}
+                    >
+                      {isSelected && <span className="h-2 w-2 rounded-full bg-accent" />}
+                    </span>
+                  </div>
+                  <p className="text-[13px] text-muted mt-1 leading-relaxed">{portal.summary}</p>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-3 pt-2">
+            <Button onClick={() => navigate('/login')} className="flex-1">
+              Continue to sign in
+              <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
+            </Button>
+            {activePortal.canSignup && (
+              <Link to="/signup">
+                <Button variant="secondary">Register</Button>
+              </Link>
+            )}
+          </div>
+        </div>
+
+        <p className="text-[12px] text-muted">
+          Coordinator and Admin accounts are provisioned by an administrator.
+        </p>
+      </div>
+
+      {/* Right: Calm Paper Panel */}
+      <div className="hidden lg:flex lg:col-span-5 bg-paper border-l border-hairline p-12 flex-col justify-between">
+        <BrandMark subtitle="Campus Placement Office" />
+        <p className="font-display text-[22px] leading-[1.35] text-ink max-w-sm">
+          One record for every drive, shortlist, and offer letter across the graduating batch.
+        </p>
+        <p className="font-mono text-[12px] text-muted">
+          Academic Year 2025–26
+        </p>
       </div>
     </div>
   );
