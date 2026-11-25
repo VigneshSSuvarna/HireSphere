@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { API_URL } from "./config";
 
 export default function Signup() {
   const [email, setEmail] = useState("");
@@ -29,7 +30,7 @@ export default function Signup() {
 
     try {
       // 2. Original Database Connection (Untouched)
-      const response = await fetch("http://localhost:5000/api/auth/register", {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

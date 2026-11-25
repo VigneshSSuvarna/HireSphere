@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_campus_key_2026';
+import { JWT_SECRET } from '../config';
 
 // Extend the Express Request type so we can attach the user to it safely
 export interface AuthRequest extends Request {

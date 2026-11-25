@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from './store/authStore';
+import { API_URL } from './config';
 
 export interface DsaLog {
   id: string;
@@ -85,7 +86,7 @@ export const DsaTracker: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('http://localhost:5000/api/dsa', {
+      const res = await fetch(`${API_URL}/api/dsa`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -132,7 +133,7 @@ export const DsaTracker: React.FC = () => {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('http://localhost:5000/api/dsa', {
+      const res = await fetch(`${API_URL}/api/dsa`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -287,7 +288,7 @@ export const DsaTracker: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/dsa/${id}`, {
+      const res = await fetch(`${API_URL}/api/dsa/${id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,

@@ -8,7 +8,7 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const schema_1 = require("../../db/schema"); // ✅ Perfect import path
 const drizzle_orm_1 = require("drizzle-orm");
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_campus_key_2026';
+const config_1 = require("../../config");
 const registerUser = async (req, res) => {
     try {
         const { email, password, role } = req.body;
@@ -46,7 +46,7 @@ const loginUser = async (req, res) => {
             res.status(401).json({ error: "Invalid credentials" });
             return;
         }
-        const token = jsonwebtoken_1.default.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
+        const token = jsonwebtoken_1.default.sign({ id: user.id, role: user.role }, config_1.JWT_SECRET, { expiresIn: '1d' });
         res.status(200).json({
             token,
             user: { id: user.id, email: user.email, role: user.role }

@@ -3,8 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db, users } from '../../db/schema'; // ✅ Perfect import path
 import { eq } from 'drizzle-orm';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_campus_key_2026';
+import { JWT_SECRET } from '../../config';
 
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
   try {
