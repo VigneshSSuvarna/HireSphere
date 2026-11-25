@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Pencil, Plus, Trash2, Users } from 'lucide-react';
 import type {
   ApplicationStatus,
   CoordinatorDashboardStats,
@@ -7,6 +8,20 @@ import type {
 import { api } from './lib/api';
 import { useToast } from './components/Toast';
 import { CardSkeleton, StatSkeleton } from './components/Skeleton';
+import {
+  Button,
+  DataTable,
+  EmptyState,
+  Input,
+  Modal,
+  PageHeader,
+  Panel,
+  Select,
+  StatBlock,
+  StatusTag,
+  Textarea,
+  type DataTableColumn,
+} from './components/ui';
 
 interface CompanyOption {
   id: string;
@@ -56,7 +71,6 @@ export default function CoordinatorDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Create/Edit Drive Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDrive, setEditingDrive] = useState<CoordinatorDrive | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -73,7 +87,6 @@ export default function CoordinatorDashboard() {
     status: 'OPEN' as DriveStatus,
   });
 
-  // Applicants Modal
   const [selectedDrive, setSelectedDrive] = useState<CoordinatorDrive | null>(null);
   const [applicants, setApplicants] = useState<DriveApplicant[]>([]);
   const [loadingApplicants, setLoadingApplicants] = useState(false);
@@ -159,10 +172,10 @@ export default function CoordinatorDashboard() {
 
       if (editingDrive) {
         await api.put(`/api/drives/${editingDrive.id}`, payload);
-        showToast('Drive updated!', 'success');
+        showToast('Drive updated.', 'success');
       } else {
         await api.post('/api/drives', payload);
-        showToast('Drive created!', 'success');
+        showToast('Drive created.', 'success');
       }
       setIsModalOpen(false);
       await loadData();
@@ -176,7 +189,7 @@ export default function CoordinatorDashboard() {
   const handleDeleteDrive = async (id: string) => {
     try {
       await api.delete(`/api/drives/${id}`);
-      showToast('Drive deleted', 'info');
+      showToast('Drive deleted.', 'info');
       await loadData();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to delete drive', 'error');
@@ -204,419 +217,326 @@ export default function CoordinatorDashboard() {
       setApplicants((prev) =>
         prev.map((a) => (a.id === applicationId ? { ...a, status } : a))
       );
-      showToast(`Updated status to ${status}`, 'success');
+      showToast(`Updated status to ${status}.`, 'success');
       loadData();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to update status', 'error');
     }
   };
 
-  return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+  const columns: DataTableColumn<CoordinatorDrive>[] = [
+    {
+      key: 'company',
+      header: 'Company & Role',
+      sortValue: (d) => d.companyName,
+      render: (d) => (
         <div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
-            Placement Coordinator Portal
-          </h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-            Manage campus drives, track the placement funnel, and review applicants.
-          </p>
+          <span className="font-medium text-ink">{d.companyName}</span>
+          <span className="text-muted text-[12px] ml-2">
+            {d.roleTitle} · {d.location}
+          </span>
         </div>
+      ),
+    },
+    {
+      key: 'lpa',
+      header: 'CTC (LPA)',
+      align: 'right',
+      sortValue: (d) => d.packageLpa,
+      render: (d) => <span className="font-mono tabular-nums">{d.packageLpa.toFixed(1)}</span>,
+    },
+    {
+      key: 'criteria',
+      header: 'Criteria',
+      render: (d) => (
+        <span className="font-mono text-[12px] text-muted tabular-nums">
+          ≥ {d.minCgpa.toFixed(1)} ·{' '}
+          {d.allowedDepartments.length ? d.allowedDepartments.join(', ') : 'All'}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (d) => <StatusTag status={d.status} />,
+    },
+    {
+      key: 'applicants',
+      header: 'Applicants',
+      align: 'right',
+      sortValue: (d) => d.applicantCount,
+      render: (d) => (
         <button
           type="button"
-          onClick={openCreateModal}
-          className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-lg shadow-purple-500/20 self-start sm:self-auto"
+          onClick={() => openApplicants(d)}
+          className="inline-flex items-center gap-1.5 font-mono text-[12px] font-medium text-accent hover:underline cursor-pointer tabular-nums"
         >
-          + New Placement Drive
+          <Users className="h-3.5 w-3.5" strokeWidth={1.75} />
+          {d.applicantCount}
         </button>
-      </div>
-
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/40 text-red-400 p-4 rounded-xl flex justify-between items-center">
-          <span className="text-sm">{error}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      render: (d) => (
+        <div className="inline-flex items-center gap-1">
           <button
             type="button"
-            onClick={loadData}
-            className="text-xs font-bold px-3 py-1 rounded bg-red-500/20"
+            onClick={() => openEditModal(d)}
+            aria-label={`Edit ${d.companyName}`}
+            className="h-7 w-7 inline-flex items-center justify-center rounded-[6px] text-muted hover:text-ink hover:bg-subtle cursor-pointer"
           >
-            Retry
+            <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDeleteDrive(d.id)}
+            aria-label={`Delete ${d.companyName}`}
+            className="h-7 w-7 inline-flex items-center justify-center rounded-[6px] text-muted hover:text-status-rejected hover:bg-status-rejected-bg cursor-pointer"
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
         </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-6">
+      <PageHeader
+        title="Coordinator Portal"
+        description="Manage campus drives, eligibility cutoffs, and round-by-round shortlists."
+        actions={
+          <Button onClick={openCreateModal}>
+            <Plus className="h-4 w-4" strokeWidth={1.75} />
+            New drive
+          </Button>
+        }
+      />
+
+      {error && (
+        <Panel className="border-status-rejected/30 bg-status-rejected-bg flex items-center justify-between gap-4">
+          <p className="text-[13px] text-status-rejected">{error}</p>
+          <Button variant="secondary" size="sm" onClick={loadData}>
+            Retry
+          </Button>
+        </Panel>
       )}
 
-      {/* Funnel Stats */}
       {isLoading ? (
         <StatSkeleton />
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Open Drives</p>
-            <p className="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-1">
-              {stats?.openDrives ?? 0}{' '}
-              <span className="text-sm text-slate-500 font-normal">
-                / {stats?.totalDrives ?? 0}
-              </span>
-            </p>
-          </div>
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Total Applications</p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">
-              {stats?.totalApplicants ?? 0}
-            </p>
-          </div>
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Shortlisted / Interview</p>
-            <p className="text-3xl font-bold text-blue-600 dark:text-blue-400 mt-1">
-              {(stats?.funnel.SHORTLISTED ?? 0) + (stats?.funnel.INTERVIEW ?? 0)}
-            </p>
-          </div>
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Offers Extended</p>
-            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-              {stats?.funnel.OFFERED ?? 0}
-            </p>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatBlock
+            label="Open Drives"
+            value={stats?.openDrives ?? 0}
+            delta={`of ${stats?.totalDrives ?? 0} total`}
+          />
+          <StatBlock label="Total Applications" value={stats?.totalApplicants ?? 0} />
+          <StatBlock
+            label="Shortlisted & Interview"
+            value={(stats?.funnel.SHORTLISTED ?? 0) + (stats?.funnel.INTERVIEW ?? 0)}
+          />
+          <StatBlock
+            label="Offers Extended"
+            value={stats?.funnel.OFFERED ?? 0}
+            deltaTone="positive"
+          />
         </div>
       )}
 
-      {/* Drives Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-            All Campus Drives
-          </h3>
+      <Panel padded={false} className="overflow-hidden">
+        <div className="px-4 py-3 border-b border-hairline bg-subtle/40">
+          <h3 className="text-[14px] font-semibold text-ink">All Campus Drives</h3>
         </div>
-        <div className="overflow-x-auto">
-          {isLoading ? (
-            <div className="p-6">
-              <CardSkeleton rows={4} />
-            </div>
-          ) : drives.length === 0 ? (
-            <div className="p-10 text-center text-slate-500 text-sm">
-              No placement drives created yet. Click &quot;+ New Placement Drive&quot; to add one.
-            </div>
-          ) : (
-            <table className="w-full text-left text-sm text-slate-800 dark:text-slate-300">
-              <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="px-6 py-4 font-bold">Company & Role</th>
-                  <th className="px-6 py-4 font-bold">Package</th>
-                  <th className="px-6 py-4 font-bold">Criteria</th>
-                  <th className="px-6 py-4 font-bold">Status</th>
-                  <th className="px-6 py-4 font-bold">Applicants</th>
-                  <th className="px-6 py-4 text-right font-bold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {drives.map((drive) => (
-                  <tr
-                    key={drive.id}
-                    className="border-b border-slate-200/70 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/30"
-                  >
-                    <td className="px-6 py-4">
-                      <p className="font-bold text-slate-900 dark:text-slate-100">
-                        {drive.companyName}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {drive.roleTitle} • {drive.location}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4 font-semibold">{drive.packageLpa} LPA</td>
-                    <td className="px-6 py-4 text-xs text-slate-500">
-                      CGPA ≥ {drive.minCgpa} •{' '}
-                      {drive.allowedDepartments.length
-                        ? drive.allowedDepartments.join(', ')
-                        : 'All Depts'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                          drive.status === 'OPEN'
-                            ? 'bg-emerald-500/15 text-emerald-500'
-                            : drive.status === 'CLOSED'
-                            ? 'bg-amber-500/15 text-amber-500'
-                            : 'bg-slate-500/15 text-slate-400'
-                        }`}
-                      >
-                        {drive.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        type="button"
-                        onClick={() => openApplicants(drive)}
-                        className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline"
-                      >
-                        View ({drive.applicantCount})
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 text-right space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(drive)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteDrive(drive.id)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      {/* Create/Edit Drive Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                {editingDrive ? 'Edit Drive' : 'Create New Drive'}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-500 hover:text-slate-200"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveDrive} className="space-y-4">
-              {!editingDrive && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">
-                      Existing Company
-                    </label>
-                    <select
-                      value={form.companyId}
-                      onChange={(e) => setForm({ ...form, companyId: e.target.value })}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                    >
-                      {companies.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1">
-                      Or New Company Name
-                    </label>
-                    <input
-                      type="text"
-                      value={form.companyName}
-                      onChange={(e) => setForm({ ...form, companyName: e.target.value })}
-                      placeholder="Optional new company"
-                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">
-                    Role Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={form.roleTitle}
-                    onChange={(e) => setForm({ ...form, roleTitle: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">
-                    Location
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={form.location}
-                    onChange={(e) => setForm({ ...form, location: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">
-                    Package (LPA)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    required
-                    value={form.packageLpa}
-                    onChange={(e) => setForm({ ...form, packageLpa: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">
-                    Min CGPA
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="10"
-                    value={form.minCgpa}
-                    onChange={(e) => setForm({ ...form, minCgpa: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">
-                    Status
-                  </label>
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value as DriveStatus })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="OPEN">OPEN</option>
-                    <option value="CLOSED">CLOSED</option>
-                    <option value="COMPLETED">COMPLETED</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">
-                    Allowed Departments (comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={form.allowedDepartments}
-                    onChange={(e) => setForm({ ...form, allowedDepartments: e.target.value })}
-                    placeholder="CSE, IT, ECE"
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">
-                    Deadline
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={form.deadline}
-                    onChange={(e) => setForm({ ...form, deadline: e.target.value })}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">
-                  Description
-                </label>
-                <textarea
-                  rows={3}
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm resize-none"
+        {isLoading ? (
+          <div className="p-4">
+            <CardSkeleton rows={4} />
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={drives}
+            rowKey={(d) => d.id}
+            emptyState={
+              <div className="p-4">
+                <EmptyState
+                  message="No campus drives have been published yet."
+                  action={
+                    <Button size="sm" variant="secondary" onClick={openCreateModal}>
+                      Create first drive
+                    </Button>
+                  }
                 />
               </div>
+            }
+          />
+        )}
+      </Panel>
 
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-lg text-sm bg-slate-200 dark:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-5 py-2 rounded-lg text-sm font-bold bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
-                >
-                  {isSaving ? 'Saving...' : 'Save Drive'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Applicants Modal */}
-      {selectedDrive && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-3xl w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                  Applicants — {selectedDrive.companyName} ({selectedDrive.roleTitle})
-                </h3>
-                <p className="text-xs text-slate-500">Update candidate status across rounds</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedDrive(null)}
-                className="text-slate-500 hover:text-slate-200"
+      {/* Create/Edit Drive Modal */}
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingDrive ? 'Edit Drive' : 'Create Placement Drive'}
+        maxWidthClass="max-w-xl"
+      >
+        <form onSubmit={handleSaveDrive} className="space-y-4">
+          {!editingDrive && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Select
+                label="Existing company"
+                value={form.companyId}
+                onChange={(e) => setForm({ ...form, companyId: e.target.value })}
               >
-                ✕
-              </button>
-            </div>
-
-            {loadingApplicants ? (
-              <CardSkeleton rows={3} />
-            ) : applicants.length === 0 ? (
-              <p className="text-sm text-slate-500 py-6 text-center">
-                No students have applied to this drive yet.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {applicants.map((app) => (
-                  <div
-                    key={app.id}
-                    className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div>
-                      <p className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                        {app.fullName || app.email}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {app.email} • {app.department || 'N/A'} • CGPA: {app.cgpa ?? 0}
-                      </p>
-                    </div>
-                    <select
-                      value={app.status}
-                      onChange={(e) =>
-                        handleStatusChange(app.id, e.target.value as ApplicationStatus)
-                      }
-                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold"
-                    >
-                      {APP_STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
                 ))}
-              </div>
-            )}
+              </Select>
+              <Input
+                label="Or new company name"
+                value={form.companyName}
+                onChange={(e) => setForm({ ...form, companyName: e.target.value })}
+                placeholder="Optional new company"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Role title"
+              required
+              value={form.roleTitle}
+              onChange={(e) => setForm({ ...form, roleTitle: e.target.value })}
+            />
+            <Input
+              label="Location"
+              required
+              value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })}
+            />
           </div>
-        </div>
-      )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Input
+              label="Package (LPA)"
+              type="number"
+              step="0.5"
+              required
+              value={form.packageLpa}
+              onChange={(e) => setForm({ ...form, packageLpa: e.target.value })}
+              className="font-mono tabular-nums"
+            />
+            <Input
+              label="Min CGPA"
+              type="number"
+              step="0.1"
+              min="0"
+              max="10"
+              value={form.minCgpa}
+              onChange={(e) => setForm({ ...form, minCgpa: e.target.value })}
+              className="font-mono tabular-nums"
+            />
+            <Select
+              label="Status"
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value as DriveStatus })}
+            >
+              <option value="OPEN">OPEN</option>
+              <option value="CLOSED">CLOSED</option>
+              <option value="COMPLETED">COMPLETED</option>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Allowed departments"
+              value={form.allowedDepartments}
+              onChange={(e) => setForm({ ...form, allowedDepartments: e.target.value })}
+              placeholder="CSE, IT, ECE"
+            />
+            <Input
+              label="Deadline"
+              type="date"
+              required
+              value={form.deadline}
+              onChange={(e) => setForm({ ...form, deadline: e.target.value })}
+            />
+          </div>
+
+          <Textarea
+            label="Role description"
+            rows={3}
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? 'Saving...' : 'Save drive'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Applicants Drawer */}
+      <Modal
+        open={Boolean(selectedDrive)}
+        onClose={() => setSelectedDrive(null)}
+        variant="drawer"
+        title={
+          selectedDrive
+            ? `${selectedDrive.companyName} — Applicants`
+            : 'Applicants'
+        }
+        description={selectedDrive?.roleTitle}
+      >
+        {loadingApplicants ? (
+          <CardSkeleton rows={4} />
+        ) : applicants.length === 0 ? (
+          <EmptyState message="No students have applied to this drive yet." />
+        ) : (
+          <div className="space-y-3">
+            {applicants.map((app) => (
+              <div
+                key={app.id}
+                className="p-3.5 rounded-[6px] bg-paper border border-hairline space-y-2.5"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-ink truncate">
+                      {app.fullName || app.email}
+                    </p>
+                    <p className="font-mono text-[11px] text-muted truncate">
+                      {app.email} · {app.department || 'N/A'} · CGPA {(app.cgpa ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+                <Select
+                  value={app.status}
+                  aria-label={`Application status for ${app.fullName || app.email}`}
+                  onChange={(e) =>
+                    handleStatusChange(app.id, e.target.value as ApplicationStatus)
+                  }
+                >
+                  {APP_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

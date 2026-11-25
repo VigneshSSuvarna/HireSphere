@@ -4,6 +4,17 @@ import { api } from './lib/api';
 import { useAuthStore } from './store/authStore';
 import { useToast } from './components/Toast';
 import { CardSkeleton, StatSkeleton } from './components/Skeleton';
+import {
+  Button,
+  DataTable,
+  EmptyState,
+  PageHeader,
+  Panel,
+  Select,
+  StatBlock,
+  StatusTag,
+  type DataTableColumn,
+} from './components/ui';
 
 interface AdminUserRow {
   id: string;
@@ -57,7 +68,7 @@ export default function DeanDashboard() {
     try {
       await api.patch(`/api/admin/users/${userId}/role`, { role });
       setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role } : u)));
-      showToast(`Role updated to ${role}`, 'success');
+      showToast(`Role updated to ${role}.`, 'success');
       loadData();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to update role', 'error');
@@ -71,180 +82,164 @@ export default function DeanDashboard() {
       setUsers((prev) =>
         prev.map((u) => (u.id === user.id ? { ...u, isActive: next } : u))
       );
-      showToast(next ? 'User activated' : 'User deactivated', 'info');
+      showToast(next ? 'Account activated.' : 'Account deactivated.', 'info');
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to update status', 'error');
     }
   };
 
+  const totalUsers =
+    (stats?.usersByRole.STUDENT ?? 0) +
+    (stats?.usersByRole.COORDINATOR ?? 0) +
+    (stats?.usersByRole.ADMIN ?? 0);
+
+  const userColumns: DataTableColumn<AdminUserRow>[] = [
+    {
+      key: 'email',
+      header: 'User',
+      sortValue: (u) => u.email,
+      render: (u) => <span className="font-medium text-ink">{u.email}</span>,
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      render: (u) => (
+        <div className="w-40">
+          <Select
+            value={u.role}
+            aria-label={`Role for ${u.email}`}
+            onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
+          >
+            <option value="STUDENT">STUDENT</option>
+            <option value="COORDINATOR">COORDINATOR</option>
+            <option value="ADMIN">ADMIN</option>
+          </Select>
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (u) => <StatusTag status={u.isActive ? 'ACTIVE' : 'INACTIVE'} />,
+    },
+    {
+      key: 'actions',
+      header: 'Action',
+      align: 'right',
+      render: (u) => (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={u.id === currentUser?.id}
+          onClick={() => handleToggleActive(u)}
+        >
+          {u.isActive ? 'Deactivate' : 'Activate'}
+        </Button>
+      ),
+    },
+  ];
+
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      <div>
-        <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-          Dean &amp; Admin Portal
-        </h2>
-        <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-          Platform health, placement metrics by department, and user role governance.
-        </p>
-      </div>
+    <div className="max-w-7xl mx-auto space-y-6">
+      <PageHeader
+        title="Dean & Admin Overview"
+        description="Department placement outcomes, system database latency, and role governance."
+      />
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/40 text-red-400 p-4 rounded-xl flex justify-between items-center">
-          <span className="text-sm">{error}</span>
-          <button
-            type="button"
-            onClick={loadData}
-            className="text-xs font-bold px-3 py-1 rounded bg-red-500/20"
-          >
+        <Panel className="border-status-rejected/30 bg-status-rejected-bg flex items-center justify-between gap-4">
+          <p className="text-[13px] text-status-rejected">{error}</p>
+          <Button variant="secondary" size="sm" onClick={loadData}>
             Retry
-          </button>
-        </div>
+          </Button>
+        </Panel>
       )}
 
       {isLoading ? (
         <StatSkeleton />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Total Users</p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">
-              {(stats?.usersByRole.STUDENT ?? 0) +
-                (stats?.usersByRole.COORDINATOR ?? 0) +
-                (stats?.usersByRole.ADMIN ?? 0)}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">
-              {stats?.usersByRole.STUDENT ?? 0} Students • {stats?.usersByRole.COORDINATOR ?? 0}{' '}
-              Coord • {stats?.usersByRole.ADMIN ?? 0} Admin
-            </p>
-          </div>
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Placement Drives</p>
-            <p className="text-3xl font-bold text-purple-600 dark:text-purple-400 mt-1">
-              {stats?.openDrives ?? 0}{' '}
-              <span className="text-sm text-slate-500 font-normal">
-                open / {stats?.totalDrives ?? 0}
-              </span>
-            </p>
-          </div>
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Placed Students</p>
-            <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-              {stats?.totalPlacements ?? 0}
-            </p>
-          </div>
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow">
-            <p className="text-xs text-slate-500 uppercase font-semibold">Database Health</p>
-            <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-              {health?.database === 'connected' ? 'Connected' : 'Error'}
-            </p>
-            <p className="text-xs text-emerald-500 mt-1">
-              Latency: {health?.latencyMs ?? '—'} ms
-            </p>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatBlock
+            label="Registered Users"
+            value={totalUsers}
+            delta={`${stats?.usersByRole.STUDENT ?? 0}S · ${stats?.usersByRole.COORDINATOR ?? 0}C · ${stats?.usersByRole.ADMIN ?? 0}A`}
+          />
+          <StatBlock
+            label="Open Drives"
+            value={stats?.openDrives ?? 0}
+            delta={`of ${stats?.totalDrives ?? 0} total`}
+          />
+          <StatBlock
+            label="Placed Students"
+            value={stats?.totalPlacements ?? 0}
+            deltaTone="positive"
+          />
+          <StatBlock
+            label="Database Latency"
+            value={health?.latencyMs !== undefined ? `${health.latencyMs} ms` : '—'}
+            delta={health?.database === 'connected' ? 'Connected' : 'Error'}
+            deltaTone={health?.database === 'connected' ? 'positive' : 'negative'}
+          />
         </div>
       )}
 
-      {/* Placement Rate by Department */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl">
-        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">
-          Placement Rate by Department
-        </h3>
+      {/* Placement Rate by Department (Minimal Accent Chart) */}
+      <Panel className="space-y-4">
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-[14px] font-semibold text-ink">
+            Placement Rate by Department
+          </h3>
+          <span className="font-mono text-[12px] text-muted">Offers / Registered</span>
+        </div>
+
         {isLoading ? (
           <CardSkeleton rows={3} />
         ) : !stats?.placementRateByDepartment.length ? (
-          <p className="text-sm text-slate-500">No student profile data yet.</p>
+          <EmptyState message="No student profile data available yet." />
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3 border-t border-hairline pt-4">
             {stats.placementRateByDepartment.map((dept) => (
-              <div key={dept.department} className="space-y-1.5">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-700 dark:text-slate-300">
-                    {dept.department} ({dept.placedStudents} / {dept.totalStudents} placed)
-                  </span>
-                  <span className="text-purple-600 dark:text-purple-400">{dept.rate}%</span>
-                </div>
-                <div className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+              <div key={dept.department} className="grid grid-cols-12 items-center gap-3">
+                <span className="col-span-2 sm:col-span-1 font-mono text-[12px] font-medium text-ink">
+                  {dept.department}
+                </span>
+                <div className="col-span-7 sm:col-span-9 h-2.5 rounded-[3px] bg-subtle border border-hairline overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-purple-600 to-emerald-500 rounded-full"
+                    className="h-full bg-accent transition-all duration-150"
                     style={{ width: `${dept.rate}%` }}
                   />
                 </div>
+                <span className="col-span-3 sm:col-span-2 text-right font-mono text-[12px] text-muted tabular-nums">
+                  {dept.placedStudents}/{dept.totalStudents} ({dept.rate}%)
+                </span>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </Panel>
 
       {/* User & Role Management */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-            User &amp; Role Management
-          </h3>
+      <Panel padded={false} className="overflow-hidden">
+        <div className="px-4 py-3 border-b border-hairline bg-subtle/40">
+          <h3 className="text-[14px] font-semibold text-ink">User &amp; Role Management</h3>
         </div>
-        <div className="overflow-x-auto">
-          {isLoading ? (
-            <div className="p-6">
-              <CardSkeleton rows={4} />
-            </div>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="px-6 py-3.5 font-bold">Email</th>
-                  <th className="px-6 py-3.5 font-bold">Role</th>
-                  <th className="px-6 py-3.5 font-bold">Status</th>
-                  <th className="px-6 py-3.5 text-right font-bold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr
-                    key={u.id}
-                    className="border-b border-slate-200/70 dark:border-slate-800/60"
-                  >
-                    <td className="px-6 py-4 font-medium text-slate-900 dark:text-slate-100">
-                      {u.email}
-                    </td>
-                    <td className="px-6 py-4">
-                      <select
-                        value={u.role}
-                        onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
-                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-semibold"
-                      >
-                        <option value="STUDENT">STUDENT</option>
-                        <option value="COORDINATOR">COORDINATOR</option>
-                        <option value="ADMIN">ADMIN</option>
-                      </select>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                          u.isActive
-                            ? 'bg-emerald-500/15 text-emerald-500'
-                            : 'bg-red-500/15 text-red-500'
-                        }`}
-                      >
-                        {u.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        type="button"
-                        disabled={u.id === currentUser?.id}
-                        onClick={() => handleToggleActive(u)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-40"
-                      >
-                        {u.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+        {isLoading ? (
+          <div className="p-4">
+            <CardSkeleton rows={4} />
+          </div>
+        ) : (
+          <DataTable
+            columns={userColumns}
+            rows={users}
+            rowKey={(u) => u.id}
+            emptyState={
+              <div className="p-4">
+                <EmptyState message="No users found." />
+              </div>
+            }
+          />
+        )}
+      </Panel>
     </div>
   );
 }

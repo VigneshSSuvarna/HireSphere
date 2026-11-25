@@ -1,8 +1,20 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Columns3, Download } from 'lucide-react';
 import { api } from './lib/api';
 import { useAuthStore } from './store/authStore';
 import { useToast } from './components/Toast';
 import { CardSkeleton } from './components/Skeleton';
+import {
+  Button,
+  Checkbox,
+  DataTable,
+  EmptyState,
+  Input,
+  PageHeader,
+  Panel,
+  Select,
+  type DataTableColumn,
+} from './components/ui';
 
 interface StudentRow {
   id: string;
@@ -22,6 +34,20 @@ interface Pagination {
   total: number;
   totalPages: number;
 }
+
+interface VisibleCols {
+  department: boolean;
+  cgpa: boolean;
+  skills: boolean;
+  streak: boolean;
+}
+
+const DEFAULT_COLS: VisibleCols = {
+  department: true,
+  cgpa: true,
+  skills: true,
+  streak: true,
+};
 
 const API_BASE =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/+$/, '') ||
@@ -45,6 +71,36 @@ export default function StudentDatabase() {
   const [minCgpa, setMinCgpa] = useState('');
   const [skills, setSkills] = useState('');
   const [page, setPage] = useState(1);
+
+  const [colsOpen, setColsOpen] = useState(false);
+  const colsRef = useRef<HTMLDivElement>(null);
+  const [visibleCols, setVisibleCols] = useState<VisibleCols>(() => {
+    try {
+      const saved = localStorage.getItem('hiresphere_student_cols');
+      return saved ? (JSON.parse(saved) as VisibleCols) : DEFAULT_COLS;
+    } catch {
+      return DEFAULT_COLS;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hiresphere_student_cols', JSON.stringify(visibleCols));
+    } catch {
+      // ignore storage errors
+    }
+  }, [visibleCols]);
+
+  useEffect(() => {
+    if (!colsOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (colsRef.current && !colsRef.current.contains(e.target as Node)) {
+        setColsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [colsOpen]);
 
   const buildQueryString = useCallback(
     (targetPage: number) => {
@@ -94,164 +150,242 @@ export default function StudentDatabase() {
       a.download = 'students.csv';
       a.click();
       URL.revokeObjectURL(url);
-      showToast('Exported students.csv', 'success');
+      showToast('Exported students.csv.', 'success');
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'CSV export failed', 'error');
     }
   };
 
+  const columns: DataTableColumn<StudentRow>[] = [
+    {
+      key: 'student',
+      header: 'Student',
+      sortValue: (s) => s.fullName || s.email,
+      render: (s) => (
+        <div>
+          <span className="font-medium text-ink">{s.fullName || s.email.split('@')[0]}</span>
+          <span className="font-mono text-[12px] text-muted ml-2">{s.email}</span>
+        </div>
+      ),
+    },
+    ...(visibleCols.department
+      ? [
+          {
+            key: 'department',
+            header: 'Branch',
+            sortValue: (s: StudentRow) => s.department || '',
+            render: (s: StudentRow) => (
+              <span className="font-mono text-[12px] text-ink">{s.department || '—'}</span>
+            ),
+          },
+        ]
+      : []),
+    ...(visibleCols.cgpa
+      ? [
+          {
+            key: 'cgpa',
+            header: 'CGPA',
+            align: 'right' as const,
+            sortValue: (s: StudentRow) => s.cgpa ?? 0,
+            render: (s: StudentRow) => (
+              <span className="font-mono tabular-nums">{(s.cgpa ?? 0).toFixed(2)}</span>
+            ),
+          },
+        ]
+      : []),
+    ...(visibleCols.skills
+      ? [
+          {
+            key: 'skills',
+            header: 'Skills',
+            render: (s: StudentRow) => (
+              <span className="text-[12px] text-muted">
+                {(s.skills || []).slice(0, 4).join(', ') || '—'}
+              </span>
+            ),
+          },
+        ]
+      : []),
+    ...(visibleCols.streak
+      ? [
+          {
+            key: 'streak',
+            header: 'DSA Streak',
+            align: 'right' as const,
+            sortValue: (s: StudentRow) => s.streak,
+            render: (s: StudentRow) => (
+              <span className="font-mono text-[12px] text-accent tabular-nums">{s.streak}d</span>
+            ),
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            Student Database
-          </h2>
-          <p className="text-sm text-slate-500">
-            Filter candidates by department, CGPA, and skills, or export to CSV.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={handleExportCsv}
-          className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow self-start sm:self-auto"
-        >
-          Export CSV
-        </button>
-      </div>
+      <PageHeader
+        title="Student Database"
+        description="Filter registered students by branch, CGPA cutoff, or skills, and export shortlists."
+        actions={
+          <>
+            <div ref={colsRef} className="relative">
+              <Button variant="secondary" onClick={() => setColsOpen((p) => !p)}>
+                <Columns3 className="h-4 w-4" strokeWidth={1.75} />
+                Columns
+              </Button>
+              {colsOpen && (
+                <div
+                  style={{ boxShadow: 'var(--popover-shadow)' }}
+                  className="absolute right-0 mt-2 w-48 rounded-[8px] bg-surface border border-hairline p-3 space-y-2 z-40"
+                >
+                  <Checkbox
+                    label="Branch"
+                    checked={visibleCols.department}
+                    onChange={(e) =>
+                      setVisibleCols((c) => ({ ...c, department: e.target.checked }))
+                    }
+                  />
+                  <Checkbox
+                    label="CGPA"
+                    checked={visibleCols.cgpa}
+                    onChange={(e) =>
+                      setVisibleCols((c) => ({ ...c, cgpa: e.target.checked }))
+                    }
+                  />
+                  <Checkbox
+                    label="Skills"
+                    checked={visibleCols.skills}
+                    onChange={(e) =>
+                      setVisibleCols((c) => ({ ...c, skills: e.target.checked }))
+                    }
+                  />
+                  <Checkbox
+                    label="DSA Streak"
+                    checked={visibleCols.streak}
+                    onChange={(e) =>
+                      setVisibleCols((c) => ({ ...c, streak: e.target.checked }))
+                    }
+                  />
+                </div>
+              )}
+            </div>
+            <Button variant="secondary" onClick={handleExportCsv}>
+              <Download className="h-4 w-4" strokeWidth={1.75} />
+              Export CSV
+            </Button>
+          </>
+        }
+      />
 
-      {/* Filters */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <input
-          type="text"
+      {/* Filter Bar */}
+      <Panel className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <Input
           value={search}
           onChange={(e) => {
             setPage(1);
             setSearch(e.target.value);
           }}
           placeholder="Search name or email..."
-          className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
+          aria-label="Search students"
         />
-        <select
+        <Select
           value={department}
+          aria-label="Filter by department"
           onChange={(e) => {
             setPage(1);
             setDepartment(e.target.value);
           }}
-          className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
         >
-          <option value="ALL">All Departments</option>
+          <option value="ALL">All branches</option>
           <option value="CSE">CSE</option>
           <option value="IT">IT</option>
           <option value="ECE">ECE</option>
           <option value="MECH">MECH</option>
-        </select>
-        <input
+        </Select>
+        <Input
           type="number"
           step="0.1"
           min="0"
           max="10"
           value={minCgpa}
+          aria-label="Minimum CGPA"
           onChange={(e) => {
             setPage(1);
             setMinCgpa(e.target.value);
           }}
           placeholder="Min CGPA (e.g. 7.5)"
-          className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
+          className="font-mono tabular-nums"
         />
-        <input
-          type="text"
+        <Input
           value={skills}
+          aria-label="Filter by skills"
           onChange={(e) => {
             setPage(1);
             setSkills(e.target.value);
           }}
           placeholder="Skills (e.g. React, Python)"
-          className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
         />
-      </div>
+      </Panel>
 
-      {/* Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          {isLoading ? (
-            <div className="p-6">
-              <CardSkeleton rows={5} />
-            </div>
-          ) : students.length === 0 ? (
-            <div className="p-10 text-center text-slate-500 text-sm">
-              No students match the current filters.
-            </div>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="px-6 py-3.5 font-bold">Student</th>
-                  <th className="px-6 py-3.5 font-bold">Dept</th>
-                  <th className="px-6 py-3.5 font-bold">CGPA</th>
-                  <th className="px-6 py-3.5 font-bold">Skills</th>
-                  <th className="px-6 py-3.5 font-bold">DSA Streak</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.map((s) => (
-                  <tr
-                    key={s.id}
-                    className="border-b border-slate-200/70 dark:border-slate-800/60"
-                  >
-                    <td className="px-6 py-4">
-                      <p className="font-bold text-slate-900 dark:text-slate-100">
-                        {s.fullName || s.email.split('@')[0]}
-                      </p>
-                      <p className="text-xs text-slate-500">{s.email}</p>
-                    </td>
-                    <td className="px-6 py-4 font-medium">{s.department || '—'}</td>
-                    <td className="px-6 py-4 font-semibold">{s.cgpa ?? 0}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1">
-                        {(s.skills || []).slice(0, 4).map((sk) => (
-                          <span
-                            key={sk}
-                            className="text-[11px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-300"
-                          >
-                            {sk}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-amber-500 font-bold">{s.streak}d</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+      <Panel padded={false} className="overflow-hidden">
+        {isLoading ? (
+          <div className="p-4">
+            <CardSkeleton rows={5} />
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={students}
+            rowKey={(s) => s.id}
+            emptyState={
+              <div className="p-4">
+                <EmptyState
+                  message="No students match the current filters."
+                  action={
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setSearch('');
+                        setDepartment('ALL');
+                        setMinCgpa('');
+                        setSkills('');
+                        setPage(1);
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  }
+                />
+              </div>
+            }
+          />
+        )}
 
-        {/* Pagination */}
-        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
-          <span>
-            Showing page {pagination.page} of {pagination.totalPages} ({pagination.total} students)
+        <div className="px-4 py-3 border-t border-hairline flex items-center justify-between text-[12px] text-muted bg-subtle/30">
+          <span className="font-mono tabular-nums">
+            Page {pagination.page} / {pagination.totalPages} ({pagination.total} students)
           </span>
           <div className="flex gap-2">
-            <button
-              type="button"
+            <Button
+              size="sm"
+              variant="secondary"
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
-              className="px-3 py-1.5 rounded bg-slate-100 dark:bg-slate-800 disabled:opacity-40"
             >
-              Prev
-            </button>
-            <button
-              type="button"
+              Previous
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
               disabled={page >= pagination.totalPages}
               onClick={() => setPage((p) => p + 1)}
-              className="px-3 py-1.5 rounded bg-slate-100 dark:bg-slate-800 disabled:opacity-40"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </Panel>
     </div>
   );
 }

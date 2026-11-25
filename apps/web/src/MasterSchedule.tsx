@@ -1,8 +1,20 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import type { EventType } from '@hiresphere/shared';
 import { api } from './lib/api';
 import { useToast } from './components/Toast';
 import { CardSkeleton } from './components/Skeleton';
+import {
+  Button,
+  EmptyState,
+  Input,
+  Modal,
+  PageHeader,
+  Panel,
+  Select,
+  StatusTag,
+  Tabs,
+} from './components/ui';
 
 interface EventItem {
   id: string;
@@ -17,6 +29,7 @@ export default function MasterSchedule() {
   const { showToast } = useToast();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [view, setView] = useState('list');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<EventItem | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -80,10 +93,10 @@ export default function MasterSchedule() {
       };
       if (editing) {
         await api.put(`/api/events/${editing.id}`, payload);
-        showToast('Event updated!', 'success');
+        showToast('Event updated.', 'success');
       } else {
         await api.post('/api/events', payload);
-        showToast('Event created!', 'success');
+        showToast('Event created.', 'success');
       }
       setIsModalOpen(false);
       await loadEvents();
@@ -97,152 +110,183 @@ export default function MasterSchedule() {
   const handleDelete = async (id: string) => {
     try {
       await api.delete(`/api/events/${id}`);
-      showToast('Event deleted', 'info');
+      showToast('Event deleted.', 'info');
       await loadEvents();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to delete event', 'error');
     }
   };
 
+  // Group events by date for Week/Day grouped view
+  const groupedByDay = events.reduce((acc, ev) => {
+    const key = new Date(ev.startsAt).toLocaleDateString('en-IN', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(ev);
+    return acc;
+  }, {} as Record<string, EventItem[]>);
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            Master Schedule
-          </h2>
-          <p className="text-sm text-slate-500">
-            Create and manage campus placement tests, PPTs, and interviews.
-          </p>
+      <PageHeader
+        title="Master Schedule"
+        description="Coordinate pre-placement talks, online tests, and interview panels."
+        actions={
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" strokeWidth={1.75} />
+            New event
+          </Button>
+        }
+      />
+
+      <Panel padded={false} className="overflow-hidden">
+        <div className="px-4 pt-2">
+          <Tabs
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'list', label: 'List view', count: events.length },
+              { value: 'grouped', label: 'By date', count: Object.keys(groupedByDay).length },
+            ]}
+          />
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold shadow self-start sm:self-auto"
-        >
-          + New Event
-        </button>
-      </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6">
-        {isLoading ? (
-          <CardSkeleton rows={4} />
-        ) : events.length === 0 ? (
-          <p className="text-sm text-slate-500 text-center py-8">No events scheduled yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {events.map((ev) => (
-              <div
-                key={ev.id}
-                className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div>
-                  <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-purple-500/15 text-purple-500">
-                    {ev.type}
-                  </span>
-                  <h4 className="font-bold text-slate-900 dark:text-white mt-1">{ev.title}</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {new Date(ev.startsAt).toLocaleString()} →{' '}
-                    {new Date(ev.endsAt).toLocaleString()}
-                  </p>
+        <div className="p-4">
+          {isLoading ? (
+            <CardSkeleton rows={4} />
+          ) : events.length === 0 ? (
+            <EmptyState
+              message="No placement events scheduled yet."
+              action={
+                <Button size="sm" variant="secondary" onClick={openCreate}>
+                  Schedule event
+                </Button>
+              }
+            />
+          ) : view === 'list' ? (
+            <div className="divide-y divide-hairline border border-hairline rounded-[6px]">
+              {events.map((ev) => (
+                <div
+                  key={ev.id}
+                  className="px-4 py-3 bg-surface flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <StatusTag status={ev.type} />
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium text-ink truncate">{ev.title}</p>
+                      <p className="font-mono text-[11px] text-muted tabular-nums">
+                        {new Date(ev.startsAt).toLocaleString('en-IN')} –{' '}
+                        {new Date(ev.endsAt).toLocaleTimeString('en-IN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(ev)}
+                      aria-label={`Edit ${ev.title}`}
+                      className="h-7 w-7 inline-flex items-center justify-center rounded-[6px] text-muted hover:text-ink hover:bg-subtle cursor-pointer"
+                    >
+                      <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(ev.id)}
+                      aria-label={`Delete ${ev.title}`}
+                      className="h-7 w-7 inline-flex items-center justify-center rounded-[6px] text-muted hover:text-status-rejected hover:bg-status-rejected-bg cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(ev)}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(ev.id)}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                {editing ? 'Edit Event' : 'New Event'}
-              </h3>
-              <button type="button" onClick={() => setIsModalOpen(false)}>
-                ✕
-              </button>
+              ))}
             </div>
-            <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Title</label>
-                <input
-                  type="text"
-                  required
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Type</label>
-                <select
-                  value={form.type}
-                  onChange={(e) => setForm({ ...form, type: e.target.value as EventType })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="INTERVIEW">INTERVIEW</option>
-                  <option value="TEST">TEST</option>
-                  <option value="PPT">PPT</option>
-                  <option value="OTHER">OTHER</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Starts At</label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={form.startsAt}
-                  onChange={(e) => setForm({ ...form, startsAt: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Ends At</label>
-                <input
-                  type="datetime-local"
-                  required
-                  value={form.endsAt}
-                  onChange={(e) => setForm({ ...form, endsAt: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-lg text-sm bg-slate-200 dark:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-5 py-2 rounded-lg text-sm font-bold bg-purple-600 text-white disabled:opacity-50"
-                >
-                  {isSaving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(groupedByDay).map(([day, items]) => (
+                <div key={day} className="space-y-2">
+                  <p className="font-mono text-[12px] font-medium text-muted">{day}</p>
+                  <div className="divide-y divide-hairline border border-hairline rounded-[6px]">
+                    {items.map((ev) => (
+                      <div
+                        key={ev.id}
+                        className="px-4 py-2.5 bg-surface flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <StatusTag status={ev.type} />
+                          <span className="text-[13px] font-medium text-ink truncate">
+                            {ev.title}
+                          </span>
+                        </div>
+                        <span className="font-mono text-[12px] text-muted tabular-nums shrink-0">
+                          {new Date(ev.startsAt).toLocaleTimeString('en-IN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </Panel>
+
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editing ? 'Edit Event' : 'Schedule Event'}
+      >
+        <form onSubmit={handleSave} className="space-y-4">
+          <Input
+            label="Event title"
+            required
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+          />
+          <Select
+            label="Event type"
+            value={form.type}
+            onChange={(e) => setForm({ ...form, type: e.target.value as EventType })}
+          >
+            <option value="INTERVIEW">INTERVIEW</option>
+            <option value="TEST">TEST</option>
+            <option value="PPT">PPT</option>
+            <option value="OTHER">OTHER</option>
+          </Select>
+          <Input
+            label="Starts at"
+            type="datetime-local"
+            required
+            value={form.startsAt}
+            onChange={(e) => setForm({ ...form, startsAt: e.target.value })}
+          />
+          <Input
+            label="Ends at"
+            type="datetime-local"
+            required
+            value={form.endsAt}
+            onChange={(e) => setForm({ ...form, endsAt: e.target.value })}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? 'Saving...' : 'Save event'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
