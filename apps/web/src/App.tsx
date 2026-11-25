@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import ResumeScanner from './ResumeScanner';
 import DeanDashboard from './DeanDashboard';
 import CoordinatorDashboard from './CoordinatorDashboard';
@@ -19,6 +19,36 @@ import { DsaTracker } from './DsaTracker';
 import { ToastProvider } from './components/Toast';
 import DevUiShowcase from './DevUiShowcase';
 
+const ROUTE_TITLES: Array<[string, string]> = [
+  ['/dashboard/coordinator', 'Coordinator Portal — HireSphere'],
+  ['/dashboard/students', 'Student Database — HireSphere'],
+  ['/dashboard/drives', 'Active Drives — HireSphere'],
+  ['/dashboard/admin', 'Dean & Admin Overview — HireSphere'],
+  ['/dashboard/schedule', 'Master Schedule — HireSphere'],
+  ['/dashboard/logs', 'System Logs — HireSphere'],
+  ['/dashboard/tracker', 'Job Tracker — HireSphere'],
+  ['/dashboard/scanner', 'ATS Resume Scanner — HireSphere'],
+  ['/dashboard/dsa', 'DSA Practice Tracker — HireSphere'],
+  ['/dashboard/profile', 'Profile Settings — HireSphere'],
+  ['/dashboard', 'Student Workspace — HireSphere'],
+  ['/portals', 'Select Portal — HireSphere'],
+  ['/login', 'Sign In — HireSphere'],
+  ['/signup', 'Student Registration — HireSphere'],
+  ['/dev/ui', 'UI Registry — HireSphere'],
+  ['/', 'HireSphere — Campus Placement Portal'],
+];
+
+function RouteTitle() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const match = ROUTE_TITLES.find(([prefix]) =>
+      prefix === '/' ? pathname === '/' : pathname.startsWith(prefix)
+    );
+    document.title = match ? match[1] : 'HireSphere — Campus Placement Portal';
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   useEffect(() => {
     const saved = localStorage.getItem('hiresphere_theme');
@@ -33,6 +63,7 @@ export default function App() {
   return (
     <ToastProvider>
       <BrowserRouter>
+        <RouteTitle />
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Home />} />
