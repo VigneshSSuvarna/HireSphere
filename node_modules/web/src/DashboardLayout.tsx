@@ -1,150 +1,288 @@
-import { useState } from "react";
-import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuthStore } from "./store/authStore";
+import { useState } from 'react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Briefcase,
+  Building2,
+  Calendar,
+  ChevronUp,
+  Code2,
+  FileSearch,
+  Kanban,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Moon,
+  ScrollText,
+  Settings,
+  Sun,
+  Users,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
+import { useAuthStore } from './store/authStore';
+import { BrandMark } from './components/BrandMark';
+import { Avatar, DropdownMenu } from './components/ui';
+
+interface NavLinkItem {
+  name: string;
+  path: string;
+  icon: LucideIcon;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavLinkItem[];
+}
+
+const NAV_GROUPS: Record<'student' | 'coordinator' | 'admin', NavGroup[]> = {
+  student: [
+    {
+      label: 'Placement',
+      items: [
+        { name: 'Workspace', path: '/dashboard', icon: Briefcase },
+        { name: 'Job Tracker', path: '/dashboard/tracker', icon: Kanban },
+      ],
+    },
+    {
+      label: 'Preparation',
+      items: [
+        { name: 'Resume Scanner', path: '/dashboard/scanner', icon: FileSearch },
+        { name: 'DSA Tracker', path: '/dashboard/dsa', icon: Code2 },
+      ],
+    },
+  ],
+  coordinator: [
+    {
+      label: 'Operations',
+      items: [
+        { name: 'Coordinator Portal', path: '/dashboard/coordinator', icon: LayoutDashboard },
+        { name: 'Active Drives', path: '/dashboard/drives', icon: Building2 },
+        { name: 'Student Database', path: '/dashboard/students', icon: Users },
+      ],
+    },
+  ],
+  admin: [
+    {
+      label: 'Governance',
+      items: [
+        { name: 'Admin Overview', path: '/dashboard/admin', icon: LayoutDashboard },
+        { name: 'Master Schedule', path: '/dashboard/schedule', icon: Calendar },
+        { name: 'System Logs', path: '/dashboard/logs', icon: ScrollText },
+      ],
+    },
+    {
+      label: 'Placement Cell',
+      items: [
+        { name: 'Active Drives', path: '/dashboard/drives', icon: Building2 },
+        { name: 'Student Database', path: '/dashboard/students', icon: Users },
+      ],
+    },
+  ],
+};
+
+function getPageTitle(pathname: string): string {
+  if (pathname.includes('coordinator')) return 'Coordinator Portal';
+  if (pathname.includes('students')) return 'Student Database';
+  if (pathname.includes('drives')) return 'Active Drives';
+  if (pathname.includes('admin')) return 'Dean & Admin Overview';
+  if (pathname.includes('schedule')) return 'Master Schedule';
+  if (pathname.includes('logs')) return 'System Logs';
+  if (pathname.includes('tracker')) return 'Job Tracker';
+  if (pathname.includes('scanner')) return 'ATS Resume Scanner';
+  if (pathname.includes('profile')) return 'Profile Settings';
+  if (pathname.includes('dsa')) return 'DSA Practice Tracker';
+  return 'Student Workspace';
+}
 
 export default function DashboardLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const authUser = useAuthStore((state) => state.user);
-  
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const activeUser = authUser;
-  // 1. Ensure only signed-in accounts from the DB get access
 
+  const activeUser = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
 
-  if (!activeUser) return null; 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDark, setIsDark] = useState(() =>
+    document.documentElement.classList.contains('dark')
+  );
 
-  // 2. Map database roles (Uppercase) to navigation dictionary (Lowercase)
-  const activeRole = activeUser.role.toLowerCase();
+  if (!activeUser) return null;
 
-  // 3. Dynamic Overview Title based on URL
-  const getPageTitle = () => {
-    if (location.pathname.includes("coordinator")) return "Coordinator Overview";
-    if (location.pathname.includes("dean")) return "Admin Overview";
-    if (location.pathname.includes("scanner")) return "ATS Scanner Tools";
-    if (location.pathname.includes("profile")) return "Profile Settings";
-    return "Student Overview";
+  const activeRole = activeUser.role.toLowerCase() as 'student' | 'coordinator' | 'admin';
+  const groups = NAV_GROUPS[activeRole] || NAV_GROUPS.student;
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
   };
 
-  // Extract initials from the email prefix (e.g., rahul@... -> RA)
-  const getInitials = (email: string) => {
-    return email.substring(0, 2).toUpperCase();
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    localStorage.setItem('hiresphere_theme', next ? 'dark' : 'light');
+    document.documentElement.classList.toggle('dark', next);
   };
 
-  // 4. Handle Logout (Moved to profile dropdown)
-const logout = useAuthStore((state) => state.logout);
-
-const handleLogout = () => {
-  logout();
-  navigate("/login");
-};
-
-  const navigation = {
-    student: [
-      { name: "My Workspace", path: "/dashboard", icon: "🎓" },
-      { name: "Resume Scanner", path: "/dashboard/scanner", icon: "📄" }, 
-      { name: "Job Tracker", path: "#", icon: "📊" },
-    ],
-    coordinator: [
-      { name: "Coordinator Portal", path: "/dashboard/coordinator", icon: "👥" },
-      { name: "Student Database", path: "#", icon: "🗂️" },
-      { name: "Active Drives", path: "#", icon: "🏢" },
-    ],
-    dean: [
-      { name: "Admin Dashboard", path: "/dashboard/dean", icon: "⚙️" },
-      { name: "Master Schedule", path: "#", icon: "📅" },
-      { name: "System Logs", path: "#", icon: "🖥️" },
-    ]
-  };
-
-  const currentLinks = navigation[activeRole as keyof typeof navigation] || navigation.student;
+  const pageTitle = getPageTitle(location.pathname);
 
   return (
-    <div className="min-h-screen bg-slate-950 flex text-slate-100">
-      
-      {/* Sidebar Navigation */}
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col shadow-xl z-20">
-        <div className="p-6 border-b border-slate-800">
-          <h2 className="text-2xl font-extrabold text-purple-400 tracking-tight">HireSphere</h2>
-          <p className="text-xs text-slate-500 mt-1 uppercase tracking-wider font-semibold">Campus Portal</p>
+    <div className="min-h-screen flex bg-paper text-ink">
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* 232px Quiet Sidebar */}
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 w-[232px] shrink-0 bg-surface border-r border-hairline flex flex-col z-40 transition-transform duration-150 ease-out ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="h-14 px-4 border-b border-hairline flex items-center justify-between">
+          <Link to="/" className="focus-visible:outline-none">
+            <BrandMark subtitle="Training & Placement" />
+          </Link>
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(false)}
+            className="lg:hidden h-8 w-8 inline-flex items-center justify-center rounded-[6px] text-muted hover:text-ink hover:bg-subtle cursor-pointer"
+            aria-label="Close navigation"
+          >
+            <X className="h-4 w-4" strokeWidth={1.75} />
+          </button>
         </div>
-        
-        <nav className="flex-1 p-4 space-y-2">
-          {currentLinks.map((link) => {
-            const isActive = location.pathname === link.path;
-            
-            return (
-              <Link 
-                key={link.name} 
-                to={link.path} 
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive 
-                    ? "bg-purple-600/10 text-purple-400 font-medium border border-purple-500/20" 
-                    : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                }`}
-              >
-                <span className="text-lg">{link.icon}</span>
-                {link.name}
-              </Link>
-            );
-          })}
+
+        <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto" aria-label="Primary">
+          {groups.map((group) => (
+            <div key={group.label} className="space-y-1">
+              <p className="px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                {group.label}
+              </p>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setIsSidebarOpen(false)}
+                      className={`relative flex items-center gap-2.5 h-9 px-2.5 rounded-[6px] text-[13px] transition-colors duration-150 ${
+                        isActive
+                          ? 'bg-subtle text-ink font-medium'
+                          : 'text-muted hover:text-ink hover:bg-subtle/60'
+                      }`}
+                    >
+                      {isActive && (
+                        <span
+                          className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r bg-accent"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <Icon
+                        className={`h-4 w-4 shrink-0 ${
+                          isActive ? 'text-accent' : 'text-muted'
+                        }`}
+                        strokeWidth={1.75}
+                      />
+                      <span className="truncate">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
+
+        {/* Pinned Bottom User Menu */}
+        <div className="p-3 border-t border-hairline">
+          <DropdownMenu
+            align="left"
+            trigger={
+              <button
+                type="button"
+                className="w-full flex items-center justify-between gap-2 p-2 rounded-[6px] hover:bg-subtle transition-colors duration-150 text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Avatar name={activeUser.email} size="sm" />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-ink truncate">
+                      {activeUser.email.split('@')[0]}
+                    </p>
+                    <p className="text-[11px] text-muted capitalize">{activeRole}</p>
+                  </div>
+                </div>
+                <ChevronUp className="h-3.5 w-3.5 text-muted shrink-0" strokeWidth={1.75} />
+              </button>
+            }
+            header={
+              <p className="text-[12px] text-muted truncate">{activeUser.email}</p>
+            }
+            items={[
+              {
+                label: 'Profile settings',
+                icon: <Settings className="h-3.5 w-3.5" strokeWidth={1.75} />,
+                onClick: () => navigate('/dashboard/profile'),
+              },
+              {
+                label: isDark ? 'Switch to light mode' : 'Switch to dark mode',
+                icon: isDark ? (
+                  <Sun className="h-3.5 w-3.5" strokeWidth={1.75} />
+                ) : (
+                  <Moon className="h-3.5 w-3.5" strokeWidth={1.75} />
+                ),
+                onClick: toggleTheme,
+              },
+              {
+                label: 'Sign out',
+                danger: true,
+                icon: <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />,
+                onClick: handleLogout,
+              },
+            ]}
+          />
+        </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        
-        {/* Top Header */}
-        <header className="h-16 bg-slate-900/50 backdrop-blur-md border-b border-slate-800 flex items-center px-8 justify-between relative z-10">
-          
-          <h1 className="text-lg font-semibold text-slate-200">{getPageTitle()}</h1>
-          
-          <div className="relative">
-            <button 
-              onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className="flex items-center gap-3 focus:outline-none hover:opacity-80 transition-opacity"
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+        <header className="h-14 shrink-0 bg-surface border-b border-hairline flex items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden h-8 w-8 inline-flex items-center justify-center rounded-[6px] text-muted hover:text-ink hover:bg-subtle cursor-pointer"
+              aria-label="Open navigation"
             >
-              <div className="text-right hidden md:block">
-                <p className="text-sm font-medium text-slate-200">{activeUser.email.split('@')[0]}</p>
-                <p className="text-xs text-slate-500 capitalize">{activeRole}</p>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-blue-500 flex items-center justify-center text-sm font-bold shadow-lg border-2 border-slate-800">
-                {getInitials(activeUser.email)}
-              </div>
+              <Menu className="h-4 w-4" strokeWidth={1.75} />
             </button>
-
-            {/* Profile Dropdown Menu */}
-            {isProfileOpen && (
-              <div className="absolute right-0 mt-3 w-48 bg-slate-900 rounded-xl shadow-2xl border border-slate-700 py-2 animate-in fade-in slide-in-from-top-2">
-                <div className="px-4 py-2 border-b border-slate-800 mb-1">
-                  <p className="text-xs text-slate-400 truncate">{activeUser.email}</p>
-                </div>
-                
-                {/* --- THIS IS THE UPDATED SECTION --- */}
-                <Link 
-                  to="/dashboard/profile"
-                  onClick={() => setIsProfileOpen(false)}
-                  className="block w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-purple-400 transition-colors"
-                >
-                  Profile Settings
-                </Link>
-                {/* ----------------------------------- */}
-
-                <button 
-                  onClick={handleLogout}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-red-500/10 hover:text-red-400 transition-colors"
-                >
-                  Log Out
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2 text-[13px] min-w-0">
+              <span className="text-muted hidden sm:inline">HireSphere</span>
+              <span className="text-muted hidden sm:inline">/</span>
+              <h1 className="font-medium text-ink truncate">{pageTitle}</h1>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+            className="h-8 w-8 inline-flex items-center justify-center rounded-[6px] border border-hairline bg-surface text-muted hover:text-ink hover:bg-subtle transition-colors duration-150 cursor-pointer"
+          >
+            {isDark ? (
+              <Sun className="h-4 w-4" strokeWidth={1.75} />
+            ) : (
+              <Moon className="h-4 w-4" strokeWidth={1.75} />
+            )}
+          </button>
         </header>
-        
-        <div className="flex-1 p-8 overflow-auto bg-slate-950">
+
+        <div className="flex-1 p-6 sm:p-8 overflow-auto bg-paper">
           <Outlet />
         </div>
-        
       </main>
     </div>
   );

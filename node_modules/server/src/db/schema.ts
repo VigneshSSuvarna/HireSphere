@@ -1,30 +1,175 @@
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
-import { pgTable, pgEnum, uuid, text, timestamp } from 'drizzle-orm/pg-core';
-import 'dotenv/config';
+import {
+  pgTable,
+  pgEnum,
+  uuid,
+  text,
+  timestamp,
+  integer,
+  boolean,
+  doublePrecision,
+  jsonb,
+  uniqueIndex,
+  index,
+} from 'drizzle-orm/pg-core';
+export { db } from './index.js';
 
-// 1. Establish the ONE connection
-const sql = neon(process.env.DATABASE_URL!);
-export const db = drizzle(sql);
-
-// 2. Define the Enums
 export const roleEnum = pgEnum('role', ['STUDENT', 'COORDINATOR', 'ADMIN']);
 export const difficultyEnum = pgEnum('difficulty', ['EASY', 'MEDIUM', 'HARD']);
+export const driveStatusEnum = pgEnum('drive_status', ['OPEN', 'CLOSED', 'COMPLETED']);
+export const applicationStatusEnum = pgEnum('application_status', [
+  'APPLIED',
+  'SHORTLISTED',
+  'INTERVIEW',
+  'OFFERED',
+  'REJECTED',
+]);
+export const eventTypeEnum = pgEnum('event_type', ['INTERVIEW', 'TEST', 'PPT', 'OTHER']);
 
-// 3. Define the Tables
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   email: text('email').notNull().unique(),
   password_hash: text('password_hash').notNull(),
   role: roleEnum('role').default('STUDENT').notNull(),
+  is_active: boolean('is_active').default(true).notNull(),
+  streak: integer('streak').default(0).notNull(),
   created_at: timestamp('created_at').defaultNow().notNull(),
 });
 
-export const dsaLogs = pgTable('dsa_logs', {
+export const dsaLogs = pgTable(
+  'dsa_logs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    problemTitle: text('problem_title').notNull(),
+    problemUrl: text('problem_url').notNull(),
+    difficulty: difficultyEnum('difficulty').notNull(),
+    category: text('category').default('General').notNull(),
+    language: text('language').default('Python').notNull(),
+    completedAt: timestamp('completed_at').defaultNow().notNull(),
+  },
+  (t) => [index('dsa_logs_user_completed_idx').on(t.userId, t.completedAt)]
+);
+
+export const studentProfiles = pgTable(
+  'student_profiles',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull()
+      .unique(),
+    fullName: text('full_name').default('').notNull(),
+    phone: text('phone').default('').notNull(),
+    bio: text('bio').default('').notNull(),
+    linkedin: text('linkedin').default('').notNull(),
+    github: text('github').default('').notNull(),
+    department: text('department').default('CSE').notNull(),
+    cgpa: doublePrecision('cgpa').default(0).notNull(),
+    graduationYear: integer('graduation_year').default(2026).notNull(),
+    skills: text('skills').array().default([]).notNull(),
+    resumeUrl: text('resume_url').default('').notNull(),
+    resumeText: text('resume_text').default('').notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (t) => [
+    index('student_profiles_dept_cgpa_idx').on(t.department, t.cgpa),
+  ]
+);
+
+export const companies = pgTable('companies', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').references(() => users.id).notNull(), 
-  problemTitle: text('problem_title').notNull(),
-  problemUrl: text('problem_url').notNull(),
-  difficulty: difficultyEnum('difficulty').notNull(),
-  completedAt: timestamp('completed_at').defaultNow().notNull(),
+  name: text('name').notNull().unique(),
+  website: text('website').default('').notNull(),
+  description: text('description').default('').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const drives = pgTable(
+  'drives',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    companyId: uuid('company_id')
+      .references(() => companies.id, { onDelete: 'cascade' })
+      .notNull(),
+    roleTitle: text('role_title').notNull(),
+    description: text('description').default('').notNull(),
+    packageLpa: doublePrecision('package_lpa').notNull(),
+    location: text('location').default('Remote').notNull(),
+    minCgpa: doublePrecision('min_cgpa').default(0).notNull(),
+    allowedDepartments: text('allowed_departments').array().default([]).notNull(),
+    deadline: timestamp('deadline').notNull(),
+    status: driveStatusEnum('status').default('OPEN').notNull(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [
+    index('drives_status_deadline_idx').on(t.status, t.deadline),
+    index('drives_company_idx').on(t.companyId),
+  ]
+);
+
+export const applications = pgTable(
+  'applications',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    driveId: uuid('drive_id')
+      .references(() => drives.id, { onDelete: 'cascade' })
+      .notNull(),
+    studentId: uuid('student_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    status: applicationStatusEnum('status').default('APPLIED').notNull(),
+    appliedAt: timestamp('applied_at').defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('applications_drive_student_uq').on(t.driveId, t.studentId),
+    index('applications_student_status_idx').on(t.studentId, t.status),
+    index('applications_drive_status_idx').on(t.driveId, t.status),
+  ]
+);
+
+export const events = pgTable(
+  'events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    title: text('title').notNull(),
+    type: eventTypeEnum('type').default('OTHER').notNull(),
+    startsAt: timestamp('starts_at').notNull(),
+    endsAt: timestamp('ends_at').notNull(),
+    driveId: uuid('drive_id').references(() => drives.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [index('events_starts_at_idx').on(t.startsAt)]
+);
+
+export const resumeScans = pgTable(
+  'resume_scans',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    fileName: text('file_name').notNull(),
+    score: integer('score').notNull(),
+    breakdown: jsonb('breakdown').$type<Record<string, unknown>>().notNull(),
+    jobDescription: text('job_description'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [index('resume_scans_user_created_idx').on(t.userId, t.createdAt)]
+);
+
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    action: text('action').notNull(),
+    entity: text('entity').notNull(),
+    meta: jsonb('meta').$type<Record<string, unknown>>().default({}).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (t) => [index('audit_logs_created_idx').on(t.createdAt)]
+);

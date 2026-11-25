@@ -1,33 +1,55 @@
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_campus_key_2026';
+export type UserRole = 'STUDENT' | 'COORDINATOR' | 'ADMIN';
 
-// Extend the Express Request type so we can attach the user to it safely
-export interface AuthRequest extends Request {
-  user?: any;
+export interface AuthPayload {
+  id: string;
+  role: UserRole;
 }
 
-// Interceptor 1: Checks if they are logged in at all
-export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction): any => {
-  const token = req.headers.authorization?.split(" ")[1]; // Gets token from "Bearer <token>"
+export interface AuthRequest extends Request {
+  user?: AuthPayload;
+}
 
-  if (!token) return res.status(401).json({ error: "Access Denied. No VIP pass." });
+export function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: JWT_SECRET environment variable is missing.');
+  }
+  return secret;
+}
+
+export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+
+  if (!token) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
 
   try {
-    const verified = jwt.verify(token, JWT_SECRET);
-    req.user = verified; // Attach the decoded token info to the request
-    next(); // Let them pass
-  } catch (error) {
-    res.status(403).json({ error: "Invalid or expired token." });
+    const verified = jwt.verify(token, getJwtSecret()) as AuthPayload;
+    req.user = verified;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
 
-// Interceptor 2: Checks if they are a Coordinator
-export const isCoordinator = (req: AuthRequest, res: Response, next: NextFunction): any => {
-  if (req.user && req.user.role === 'COORDINATOR') {
-    next(); // Let them pass
-  } else {
-    res.status(403).json({ error: "Access Denied. Coordinators only." });
-  }
+export const requireRole = (...roles: UserRole[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    if (!roles.includes(req.user.role)) {
+      res.status(403).json({ error: 'Forbidden: insufficient permissions' });
+      return;
+    }
+
+    next();
+  };
 };
