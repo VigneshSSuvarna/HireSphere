@@ -1,5 +1,18 @@
 import React, { useEffect, useState } from 'react';
+import { ExternalLink, Flame, Plus, Trash2, X } from 'lucide-react';
 import { api } from './lib/api';
+import { useToast } from './components/Toast';
+import { CardSkeleton } from './components/Skeleton';
+import {
+  Button,
+  EmptyState,
+  Input,
+  Modal,
+  PageHeader,
+  Panel,
+  Select,
+  StatusTag,
+} from './components/ui';
 
 export interface DsaLog {
   id: string;
@@ -16,6 +29,14 @@ export interface PlatformLink {
   id: string;
   name: string;
   url: string;
+}
+
+interface HeatMapDay {
+  date?: string;
+  displayDate?: string;
+  count?: number;
+  isFuture?: boolean;
+  isEmpty: boolean;
 }
 
 const CATEGORIES = [
@@ -50,13 +71,21 @@ const PROGRAMMING_LANGUAGES = [
 ];
 
 export const DsaTracker: React.FC = () => {
+  const { showToast } = useToast();
   const [logs, setLogs] = useState<DsaLog[]>([]);
   const [currentStreak, setCurrentStreak] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   // Platform Links State
-  const [platformLinks, setPlatformLinks] = useState<PlatformLink[]>([]);
+  const [platformLinks, setPlatformLinks] = useState<PlatformLink[]>(() => {
+    try {
+      const saved = localStorage.getItem('hiresphere_dsa_links');
+      return saved ? (JSON.parse(saved) as PlatformLink[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isLinkModalOpen, setIsLinkModalOpen] = useState<boolean>(false);
   const [newLinkData, setNewLinkData] = useState({ name: '', url: '' });
 
@@ -64,9 +93,6 @@ export const DsaTracker: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedDifficulty, setSelectedDifficulty] = useState<'ALL' | 'EASY' | 'MEDIUM' | 'HARD'>('ALL');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('ALL');
-
-  // Animation trigger state for SVG rotation key
-  const [animateKey, setAnimateKey] = useState<number>(0);
 
   // Form State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -80,6 +106,14 @@ export const DsaTracker: React.FC = () => {
     customLanguage: '',
   });
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('hiresphere_dsa_links', JSON.stringify(platformLinks));
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [platformLinks]);
+
   const fetchProgress = async () => {
     setLoading(true);
     setError(null);
@@ -87,8 +121,8 @@ export const DsaTracker: React.FC = () => {
       const data = await api.get<{ logs: DsaLog[]; currentStreak: number }>('/api/dsa');
       setLogs(data.logs || []);
       setCurrentStreak(data.currentStreak || 0);
-    } catch (err: any) {
-      setError(err.message || 'Something went wrong');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not load DSA progress.');
     } finally {
       setLoading(false);
     }
@@ -100,7 +134,6 @@ export const DsaTracker: React.FC = () => {
 
   const handleDifficultyClick = (diff: 'EASY' | 'MEDIUM' | 'HARD') => {
     setSelectedDifficulty((prev) => (prev === diff ? 'ALL' : diff));
-    setAnimateKey((prev) => prev + 1);
   };
 
   const handleLanguageClick = (lang: string) => {
@@ -135,9 +168,10 @@ export const DsaTracker: React.FC = () => {
         customLanguage: '',
       });
       setIsModalOpen(false);
+      showToast('Problem logged.', 'success');
       fetchProgress();
-    } catch (err) {
-      console.error('Failed to add problem log', err);
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to log problem', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -145,12 +179,12 @@ export const DsaTracker: React.FC = () => {
 
   const handleAddPlatformLink = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newLinkData.name || !newLinkData.url) return;
+    if (!newLinkData.name.trim() || !newLinkData.url.trim()) return;
 
     const newLink: PlatformLink = {
       id: Date.now().toString(),
-      name: newLinkData.name,
-      url: newLinkData.url.startsWith('http') ? newLinkData.url : `https://${newLinkData.url}`,
+      name: newLinkData.name.trim(),
+      url: newLinkData.url.startsWith('http') ? newLinkData.url.trim() : `https://${newLinkData.url.trim()}`,
     };
 
     setPlatformLinks((prev) => [...prev, newLink]);
@@ -160,6 +194,17 @@ export const DsaTracker: React.FC = () => {
 
   const handleDeletePlatformLink = (id: string) => {
     setPlatformLinks((prev) => prev.filter((link) => link.id !== id));
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await api.delete(`/api/dsa/${id}`);
+      setLogs((prev) => prev.filter((item) => item.id !== id));
+      showToast('Log removed.', 'info');
+      fetchProgress();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete log', 'error');
+    }
   };
 
   const buildHeatMapMatrix = () => {
@@ -175,15 +220,15 @@ export const DsaTracker: React.FC = () => {
       logCountsByDate[dateKey] = (logCountsByDate[dateKey] || 0) + 1;
     });
 
-    const monthsData: { name: string; weeks: any[][] }[] = [];
+    const monthsData: { name: string; weeks: HeatMapDay[][] }[] = [];
 
     for (let m = 11; m >= 0; m--) {
       const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth() - m, 1);
       const monthName = firstDayOfMonth.toLocaleString('default', { month: 'short' });
       const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() - m + 1, 0);
 
-      const weeks: any[][] = [];
-      let currentWeek: any[] = [];
+      const weeks: HeatMapDay[][] = [];
+      let currentWeek: HeatMapDay[] = [];
 
       const startDay = firstDayOfMonth.getDay();
       for (let i = 0; i < startDay; i++) {
@@ -199,7 +244,7 @@ export const DsaTracker: React.FC = () => {
 
         currentWeek.push({
           date: dateKey,
-          displayDate: currentDate.toLocaleDateString(undefined, {
+          displayDate: currentDate.toLocaleDateString('en-IN', {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
@@ -228,61 +273,20 @@ export const DsaTracker: React.FC = () => {
     return { monthsData, totalActiveDays: Object.keys(logCountsByDate).length };
   };
 
-  const getHeatMapColor = (count: number, isFuture: boolean, isEmpty: boolean) => {
-    if (isEmpty) return 'bg-transparent border-none';
-    if (isFuture) return 'bg-slate-900/10 cursor-not-allowed';
-    if (count === 0) return 'bg-slate-800/40 hover:bg-slate-700/60';
-    if (count === 1) return 'bg-emerald-700/80 hover:bg-emerald-600';
-    if (count === 2) return 'bg-emerald-500 hover:bg-emerald-400';
-    return 'bg-emerald-400 hover:bg-emerald-300 shadow-sm shadow-emerald-400/50';
-  };
-
-  const getDifficultyBadge = (difficulty: 'EASY' | 'MEDIUM' | 'HARD') => {
-    switch (difficulty) {
-      case 'EASY':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shadow-sm shadow-cyan-500/10">
-            Easy
-          </span>
-        );
-      case 'MEDIUM':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-sm shadow-amber-500/10">
-            Medium
-          </span>
-        );
-      case 'HARD':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm shadow-rose-500/10">
-            Hard
-          </span>
-        );
-      default:
-        return null;
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await api.delete(`/api/dsa/${id}`);
-      setLogs((prev) => prev.filter((item) => item.id !== id));
-      fetchProgress();
-    } catch (err) {
-      console.error('Failed to delete log', err);
-    }
+  const getHeatMapColor = (count = 0, isFuture = false, isEmpty = false) => {
+    if (isEmpty) return 'bg-transparent';
+    if (isFuture) return 'bg-subtle/40';
+    if (count === 0) return 'bg-subtle border border-hairline';
+    if (count === 1) return 'bg-accent/35';
+    if (count === 2) return 'bg-accent/65';
+    return 'bg-accent';
   };
 
   const { monthsData, totalActiveDays } = buildHeatMapMatrix();
-
   const easyCount = logs.filter((l) => l.difficulty === 'EASY').length;
   const mediumCount = logs.filter((l) => l.difficulty === 'MEDIUM').length;
   const hardCount = logs.filter((l) => l.difficulty === 'HARD').length;
   const totalSolved = logs.length;
-
-  const totalArc = 100;
-  const easyRatio = totalSolved > 0 ? (easyCount / totalSolved) * totalArc : 0;
-  const medRatio = totalSolved > 0 ? (mediumCount / totalSolved) * totalArc : 0;
-  const hardRatio = totalSolved > 0 ? (hardCount / totalSolved) * totalArc : 0;
 
   const languageCounts = logs.reduce((acc, log) => {
     const lang = log.language || 'Other';
@@ -291,252 +295,174 @@ export const DsaTracker: React.FC = () => {
   }, {} as Record<string, number>);
 
   const filteredLogs = logs.filter((log) => {
-    const matchCategory = selectedCategory === 'All' || log.category === selectedCategory;
-    const matchDifficulty = selectedDifficulty === 'ALL' || log.difficulty === selectedDifficulty;
-    const matchLanguage = selectedLanguage === 'ALL' || (log.language || 'Other') === selectedLanguage;
-    return matchCategory && matchDifficulty && matchLanguage;
+    const catMatch = selectedCategory === 'All' || (log.category || 'General') === selectedCategory;
+    const diffMatch = selectedDifficulty === 'ALL' || log.difficulty === selectedDifficulty;
+    const langMatch = selectedLanguage === 'ALL' || (log.language || 'Other') === selectedLanguage;
+    return catMatch && diffMatch && langMatch;
   });
 
   return (
-    <div className="w-full space-y-6">
-      {/* Top Cards Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Difficulty Progress Box with Animated Gauge */}
-        <div className="bg-slate-900/90 backdrop-blur border border-slate-800 rounded-2xl p-6 flex items-center justify-between shadow-xl transition-all duration-300 hover:border-slate-700">
-          
-          <div className="relative w-36 h-36 flex items-center justify-center">
-            <svg
-              key={animateKey}
-              className="w-full h-full transform -rotate-90 transition-transform duration-700 ease-out hover:rotate-[270deg]"
-              style={{
-                animation: 'spinOnce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
-              }}
-              viewBox="0 0 36 36"
-            >
-              <path
-                className="text-slate-800"
-                strokeWidth="2.8"
-                stroke="currentColor"
-                fill="none"
-                strokeDasharray="75, 100"
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-              />
+    <div className="max-w-7xl mx-auto space-y-6 pb-8">
+      <PageHeader
+        title="DSA Practice Tracker"
+        description="Log solved interview problems, track daily consistency, and filter by topic or difficulty."
+        actions={
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Plus className="h-4 w-4" strokeWidth={1.75} />
+            Log problem
+          </Button>
+        }
+      />
 
-              {easyRatio > 0 && (
-                <path
-                  className="text-cyan-400 transition-all duration-700 ease-in-out"
-                  strokeWidth="3.2"
-                  strokeLinecap="round"
-                  stroke="currentColor"
-                  fill="none"
-                  strokeDasharray={`${(easyRatio * 0.75).toFixed(1)}, 100`}
-                  strokeDashoffset="0"
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-              )}
-
-              {medRatio > 0 && (
-                <path
-                  className="text-amber-400 transition-all duration-700 ease-in-out"
-                  strokeWidth="3.2"
-                  strokeLinecap="round"
-                  stroke="currentColor"
-                  fill="none"
-                  strokeDasharray={`${(medRatio * 0.75).toFixed(1)}, 100`}
-                  strokeDashoffset={`-${(easyRatio * 0.75).toFixed(1)}`}
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-              )}
-
-              {hardRatio > 0 && (
-                <path
-                  className="text-rose-500 transition-all duration-700 ease-in-out"
-                  strokeWidth="3.2"
-                  strokeLinecap="round"
-                  stroke="currentColor"
-                  fill="none"
-                  strokeDasharray={`${(hardRatio * 0.75).toFixed(1)}, 100`}
-                  strokeDashoffset={`-${((easyRatio + medRatio) * 0.75).toFixed(1)}`}
-                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                />
-              )}
-            </svg>
-
-            <div className="absolute flex flex-col items-center justify-center text-center pointer-events-none">
-              <span className="text-3xl font-bold text-slate-100 leading-none">
-                {totalSolved}
-              </span>
-              <span className="text-xs text-emerald-400 font-semibold mt-1 flex items-center gap-0.5">
-                ✓ Solved
-              </span>
-            </div>
+      {/* Summary Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Difficulty Breakdown */}
+        <Panel className="space-y-4">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-[13px] font-semibold text-ink">Difficulty Breakdown</h3>
+            <span className="font-mono text-[13px] text-muted tabular-nums">
+              {totalSolved} total
+            </span>
           </div>
-
-          <div className="flex flex-col gap-2 w-32">
+          <div className="grid grid-cols-3 gap-2">
             <button
+              type="button"
               onClick={() => handleDifficultyClick('EASY')}
-              className={`p-2.5 rounded-xl border text-center transition-all duration-300 cursor-pointer ${
+              className={`p-3 rounded-[6px] border text-left transition-colors cursor-pointer ${
                 selectedDifficulty === 'EASY'
-                  ? 'bg-cyan-500/20 border-cyan-400 shadow-md shadow-cyan-500/20'
-                  : 'bg-slate-950/60 border-slate-800 hover:border-cyan-500/50 hover:bg-cyan-500/5'
+                  ? 'border-accent bg-accent-soft'
+                  : 'border-hairline bg-paper hover:bg-subtle/60'
               }`}
             >
-              <p className="text-xs font-semibold text-cyan-400">Easy</p>
-              <p className="text-sm font-bold text-slate-100">{easyCount}</p>
-            </button>
-
-            <button
-              onClick={() => handleDifficultyClick('MEDIUM')}
-              className={`p-2.5 rounded-xl border text-center transition-all duration-300 cursor-pointer ${
-                selectedDifficulty === 'MEDIUM'
-                  ? 'bg-amber-500/20 border-amber-400 shadow-md shadow-amber-500/20'
-                  : 'bg-slate-950/60 border-slate-800 hover:border-amber-500/50 hover:bg-amber-500/5'
-              }`}
-            >
-              <p className="text-xs font-semibold text-amber-400">Med.</p>
-              <p className="text-sm font-bold text-slate-100">{mediumCount}</p>
-            </button>
-
-            <button
-              onClick={() => handleDifficultyClick('HARD')}
-              className={`p-2.5 rounded-xl border text-center transition-all duration-300 cursor-pointer ${
-                selectedDifficulty === 'HARD'
-                  ? 'bg-rose-500/20 border-rose-400 shadow-md shadow-rose-500/20'
-                  : 'bg-slate-950/60 border-slate-800 hover:border-rose-500/50 hover:bg-rose-500/5'
-              }`}
-            >
-              <p className="text-xs font-semibold text-rose-500">Hard</p>
-              <p className="text-sm font-bold text-slate-100">{hardCount}</p>
-            </button>
-          </div>
-        </div>
-
-        {/* Box 2: Performance & Languages */}
-        <div className="bg-slate-900/90 backdrop-blur border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-xl transition-all duration-300 hover:border-slate-700">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Performance Stats
-              </h3>
-              <span className="text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2.5 py-1 rounded-full shadow-sm shadow-orange-500/20">
-                🔥 {currentStreak} Days Streak
-              </span>
-            </div>
-
-            <div className="mt-2 space-y-3">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Languages Solved
+              <p className="text-[12px] text-status-offered font-medium">Easy</p>
+              <p className="font-mono text-[20px] font-semibold text-ink tabular-nums mt-0.5">
+                {easyCount}
               </p>
-              {Object.keys(languageCounts).length === 0 ? (
-                <p className="text-xs text-slate-500 italic">No logs yet</p>
-              ) : (
-                <div className="flex flex-wrap gap-2 max-h-28 overflow-y-auto p-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                  {Object.entries(languageCounts).map(([lang, count]) => (
-                    <button
-                      key={lang}
-                      onClick={() => handleLanguageClick(lang)}
-                      className={`flex items-center gap-2 border px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
-                        selectedLanguage === lang
-                          ? 'bg-indigo-600/30 border-indigo-400 shadow-md shadow-indigo-500/20'
-                          : 'bg-slate-950/60 border-slate-800 hover:border-indigo-500/50'
-                      }`}
-                    >
-                      <span className="text-xs font-semibold text-indigo-400">
-                        {lang}
-                      </span>
-                      <span className="text-xs font-bold text-slate-200 bg-slate-800 px-1.5 py-0.5 rounded">
-                        {count}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDifficultyClick('MEDIUM')}
+              className={`p-3 rounded-[6px] border text-left transition-colors cursor-pointer ${
+                selectedDifficulty === 'MEDIUM'
+                  ? 'border-accent bg-accent-soft'
+                  : 'border-hairline bg-paper hover:bg-subtle/60'
+              }`}
+            >
+              <p className="text-[12px] text-status-shortlisted font-medium">Medium</p>
+              <p className="font-mono text-[20px] font-semibold text-ink tabular-nums mt-0.5">
+                {mediumCount}
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDifficultyClick('HARD')}
+              className={`p-3 rounded-[6px] border text-left transition-colors cursor-pointer ${
+                selectedDifficulty === 'HARD'
+                  ? 'border-accent bg-accent-soft'
+                  : 'border-hairline bg-paper hover:bg-subtle/60'
+              }`}
+            >
+              <p className="text-[12px] text-status-rejected font-medium">Hard</p>
+              <p className="font-mono text-[20px] font-semibold text-ink tabular-nums mt-0.5">
+                {hardCount}
+              </p>
+            </button>
           </div>
-        </div>
+        </Panel>
 
-        {/* Box 3: Platform Profile Links */}
-        <div className="bg-slate-900/90 backdrop-blur border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-xl transition-all duration-300 hover:border-slate-700">
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Platform Links
-              </h3>
+        {/* Streak & Languages */}
+        <Panel className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[13px] font-semibold text-ink">Consistency &amp; Languages</h3>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[5px] bg-status-shortlisted-bg text-status-shortlisted font-mono text-[12px] font-medium tabular-nums">
+              <Flame className="h-3.5 w-3.5" strokeWidth={1.75} />
+              {currentStreak}d streak
+            </span>
+          </div>
+          {Object.keys(languageCounts).length === 0 ? (
+            <p className="text-[12px] text-muted">No language logs yet.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(languageCounts).map(([lang, count]) => (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => handleLanguageClick(lang)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] border text-[12px] transition-colors cursor-pointer ${
+                    selectedLanguage === lang
+                      ? 'border-accent bg-accent-soft text-ink font-medium'
+                      : 'border-hairline bg-paper text-muted hover:text-ink'
+                  }`}
+                >
+                  <span>{lang}</span>
+                  <span className="font-mono tabular-nums text-ink">{count}</span>
+                </button>
+              ))}
             </div>
+          )}
+        </Panel>
 
-            <div className="space-y-2.5 max-h-40 overflow-y-auto pr-1">
+        {/* Platform Links */}
+        <Panel className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[13px] font-semibold text-ink">Coding Profiles</h3>
+            <Button variant="tertiary" size="sm" onClick={() => setIsLinkModalOpen(true)}>
+              <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Add link
+            </Button>
+          </div>
+          {platformLinks.length === 0 ? (
+            <p className="text-[12px] text-muted">
+              Save quick links to your LeetCode, Codeforces, or HackerRank profiles.
+            </p>
+          ) : (
+            <div className="space-y-1.5 max-h-28 overflow-y-auto">
               {platformLinks.map((link) => (
                 <div
                   key={link.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-indigo-500/40 transition-all duration-200 group"
+                  className="flex items-center justify-between px-3 py-1.5 rounded-[6px] bg-paper border border-hairline"
                 >
                   <a
                     href={link.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="font-semibold text-indigo-400 hover:text-indigo-300 text-sm truncate max-w-[170px]"
+                    className="inline-flex items-center gap-1.5 text-[13px] font-medium text-accent hover:underline truncate"
                   >
                     {link.name}
+                    <ExternalLink className="h-3 w-3 shrink-0" strokeWidth={1.75} />
                   </a>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-slate-400 group-hover:text-slate-200 transition-colors"
-                    >
-                      View Profile ↗
-                    </a>
-                    <button
-                      onClick={() => handleDeletePlatformLink(link.id)}
-                      className="text-slate-500 hover:text-rose-400 text-xs ml-1 transition-colors"
-                      title="Remove Link"
-                    >
-                      ✕
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePlatformLink(link.id)}
+                    aria-label={`Remove ${link.name}`}
+                    className="text-muted hover:text-status-rejected cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  </button>
                 </div>
               ))}
-
-              <button
-                onClick={() => setIsLinkModalOpen(true)}
-                className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-slate-800/80 hover:border-indigo-500/50 hover:bg-indigo-500/5 text-slate-400 hover:text-indigo-400 text-xs font-semibold transition-all duration-200 group"
-              >
-                <span className="text-base group-hover:scale-125 transition-transform">
-                  +
-                </span>
-                <span>Add Platform Profile</span>
-              </button>
             </div>
-          </div>
-        </div>
+          )}
+        </Panel>
       </div>
 
       {/* Submissions Heatmap */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl w-full overflow-hidden transition-all duration-300 hover:border-slate-700">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xl font-bold text-slate-100">{totalSolved}</span>
-            <span className="text-sm font-normal text-slate-400">
-              submissions in the past one year
-            </span>
-          </div>
-
-          <div className="flex items-center gap-6 text-xs text-slate-400">
-            <div>
-              Total active days: <span className="text-slate-100 font-bold">{totalActiveDays}</span>
-            </div>
-            <div>
-              Max streak: <span className="text-slate-100 font-bold">{currentStreak}</span>
-            </div>
+      <Panel className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <p className="text-[13px] text-ink">
+            <span className="font-mono font-semibold tabular-nums">{totalSolved}</span>{' '}
+            <span className="text-muted">submissions in the past 12 months</span>
+          </p>
+          <div className="flex items-center gap-4 font-mono text-[12px] text-muted tabular-nums">
+            <span>Active days: {totalActiveDays}</span>
+            <span>Max streak: {currentStreak}d</span>
           </div>
         </div>
 
-        <div className="overflow-x-auto pb-2 w-full">
-          <div className="flex gap-4 min-w-[720px] justify-between">
+        <div className="overflow-x-auto pb-1">
+          <div className="flex gap-3.5 min-w-[700px] justify-between">
             {monthsData.map((m) => (
-              <div key={m.name} className="flex flex-col items-center gap-2">
+              <div key={m.name} className="flex flex-col items-center gap-1.5">
                 <div className="flex gap-1">
                   {m.weeks.map((week, wIdx) => (
                     <div key={wIdx} className="flex flex-col gap-1">
@@ -547,10 +473,10 @@ export const DsaTracker: React.FC = () => {
                             day.isEmpty
                               ? undefined
                               : day.isFuture
-                              ? `${day.displayDate}`
+                              ? day.displayDate
                               : `${day.count} submission(s) on ${day.displayDate}`
                           }
-                          className={`w-3 h-3 rounded-[3px] transition-all duration-150 ${getHeatMapColor(
+                          className={`w-2.5 h-2.5 rounded-[2px] ${getHeatMapColor(
                             day.count,
                             day.isFuture,
                             day.isEmpty
@@ -560,59 +486,55 @@ export const DsaTracker: React.FC = () => {
                     </div>
                   ))}
                 </div>
-                <span className="text-[11px] font-medium text-slate-400">{m.name}</span>
+                <span className="text-[11px] font-mono text-muted">{m.name}</span>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      </Panel>
 
-      {/* Problem Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl transition-all duration-300 hover:border-slate-700">
-        <div className="p-5 border-b border-slate-800 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-slate-100">Problem History</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Track your completed practice questions
-              </p>
-            </div>
-            <div className="flex gap-2">
-              {selectedDifficulty !== 'ALL' && (
-                <button
-                  onClick={() => setSelectedDifficulty('ALL')}
-                  className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-full border border-slate-700 flex items-center gap-1.5 transition-colors"
-                >
-                  Difficulty: {selectedDifficulty} ✕
-                </button>
-              )}
-              {selectedLanguage !== 'ALL' && (
-                <button
-                  onClick={() => setSelectedLanguage('ALL')}
-                  className="text-xs bg-indigo-900/60 hover:bg-indigo-900/90 text-indigo-200 px-2.5 py-1 rounded-full border border-indigo-700 flex items-center gap-1.5 transition-colors"
-                >
-                  Language: {selectedLanguage} ✕
-                </button>
-              )}
-            </div>
+      {/* Problem History Table */}
+      <Panel padded={false} className="overflow-hidden">
+        <div className="px-4 py-3 border-b border-hairline flex flex-wrap items-center justify-between gap-3 bg-subtle/40">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-[14px] font-semibold text-ink">Problem History</h3>
+            {selectedDifficulty !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedDifficulty('ALL')}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[5px] bg-surface border border-hairline text-[12px] text-ink cursor-pointer"
+              >
+                {selectedDifficulty}
+                <X className="h-3 w-3" strokeWidth={1.75} />
+              </button>
+            )}
+            {selectedLanguage !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedLanguage('ALL')}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[5px] bg-surface border border-hairline text-[12px] text-ink cursor-pointer"
+              >
+                {selectedLanguage}
+                <X className="h-3 w-3" strokeWidth={1.75} />
+              </button>
+            )}
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all duration-200"
-          >
-            + Log Problem
-          </button>
+          <span className="font-mono text-[12px] text-muted tabular-nums">
+            {filteredLogs.length} shown
+          </span>
         </div>
 
-        <div className="px-5 py-3 border-b border-slate-800/80 bg-slate-950/30 flex gap-2 overflow-x-auto">
+        {/* Category Filter Strip */}
+        <div className="px-4 py-2 border-b border-hairline flex gap-1.5 overflow-x-auto bg-paper/60">
           {CATEGORIES.map((cat) => (
             <button
               key={cat}
+              type="button"
               onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-200 ${
+              className={`px-2.5 py-1 rounded-[5px] text-[12px] whitespace-nowrap transition-colors cursor-pointer ${
                 selectedCategory === cat
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                  : 'bg-slate-800/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                  ? 'bg-accent text-accent-fg font-medium'
+                  : 'text-muted hover:text-ink hover:bg-subtle'
               }`}
             >
               {cat}
@@ -621,67 +543,101 @@ export const DsaTracker: React.FC = () => {
         </div>
 
         {loading ? (
-          <div className="p-12 text-center text-slate-400 text-sm">
-            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500 mb-2"></div>
-            <p>Loading your solved problems...</p>
+          <div className="p-4">
+            <CardSkeleton rows={4} />
           </div>
         ) : error ? (
-          <div className="p-8 text-center text-rose-400 text-sm">{error}</div>
+          <div className="p-6 text-center text-[13px] text-status-rejected">{error}</div>
         ) : filteredLogs.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-sm">
-            No problems found for the selected criteria.
+          <div className="p-4">
+            <EmptyState
+              message="No problems match the selected category, difficulty, or language."
+              action={
+                <Button size="sm" variant="secondary" onClick={() => setIsModalOpen(true)}>
+                  Log first problem
+                </Button>
+              }
+            />
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300">
-              <thead className="bg-slate-950/50 text-xs text-slate-400 uppercase tracking-wider border-b border-slate-800">
+            <table className="w-full border-collapse text-left text-[13px]">
+              <thead className="bg-subtle border-b border-hairline">
                 <tr>
-                  <th scope="col" className="px-6 py-3.5 font-medium">Problem Title</th>
-                  <th scope="col" className="px-6 py-3.5 font-medium">Topic</th>
-                  <th scope="col" className="px-6 py-3.5 font-medium">Language</th>
-                  <th scope="col" className="px-6 py-3.5 font-medium">Difficulty</th>
-                  <th scope="col" className="px-6 py-3.5 font-medium">Completed Date</th>
-                  <th scope="col" className="px-6 py-3.5 font-medium text-right">Actions</th>
+                  <th className="h-9 px-4 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    Problem
+                  </th>
+                  <th className="h-9 px-4 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    Topic
+                  </th>
+                  <th className="h-9 px-4 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    Language
+                  </th>
+                  <th className="h-9 px-4 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    Difficulty
+                  </th>
+                  <th className="h-9 px-4 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    Completed
+                  </th>
+                  <th className="h-9 px-4 text-[11px] font-semibold uppercase tracking-wider text-muted text-right">
+                    Action
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-hairline">
                 {filteredLogs.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-6 py-4 font-medium text-slate-100">
+                  <tr key={item.id} className="h-10 hover:bg-subtle/60 transition-colors">
+                    <td className="px-4 py-2 font-medium text-ink">
                       <a
                         href={item.problemUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="hover:text-indigo-400 transition-colors flex items-center gap-1.5"
+                        className="inline-flex items-center gap-1.5 hover:text-accent transition-colors"
                       >
-                        {item.problemTitle}
-                        <span className="text-xs text-slate-500">↗</span>
+                        <span>{item.problemTitle}</span>
+                        <ExternalLink className="h-3 w-3 text-muted" strokeWidth={1.75} />
                       </a>
                     </td>
-                    <td className="px-6 py-4 text-xs text-slate-400">
-                      <span className="px-2 py-1 rounded bg-slate-800 border border-slate-700/60">
-                        {item.category || 'General'}
-                      </span>
+                    <td className="px-4 py-2 text-[12px] text-muted">
+                      {item.category || 'General'}
                     </td>
-                    <td className="px-6 py-4 text-xs font-semibold text-indigo-400">
+                    <td className="px-4 py-2 font-mono text-[12px] text-ink">
                       {item.language || 'C++'}
                     </td>
-                    <td className="px-6 py-4">
-                      {getDifficultyBadge(item.difficulty)}
+                    <td className="px-4 py-2">
+                      <StatusTag
+                        status={item.difficulty}
+                        label={
+                          item.difficulty === 'EASY'
+                            ? 'Easy'
+                            : item.difficulty === 'MEDIUM'
+                            ? 'Medium'
+                            : 'Hard'
+                        }
+                        tone={
+                          item.difficulty === 'EASY'
+                            ? 'offered'
+                            : item.difficulty === 'MEDIUM'
+                            ? 'shortlisted'
+                            : 'rejected'
+                        }
+                      />
                     </td>
-                    <td className="px-6 py-4 text-xs text-slate-400">
-                      {new Date(item.completedAt).toLocaleDateString(undefined, {
+                    <td className="px-4 py-2 font-mono text-[12px] text-muted tabular-nums">
+                      {new Date(item.completedAt).toLocaleDateString('en-IN', {
+                        day: '2-digit',
                         month: 'short',
-                        day: 'numeric',
                         year: 'numeric',
                       })}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-4 py-2 text-right">
                       <button
+                        type="button"
                         onClick={() => handleDelete(item.id)}
-                        className="text-xs text-slate-500 hover:text-rose-400 transition-colors px-2 py-1 rounded hover:bg-rose-500/10"
+                        aria-label={`Delete ${item.problemTitle}`}
+                        className="inline-flex items-center justify-center h-7 w-7 rounded-[6px] text-muted hover:text-status-rejected hover:bg-status-rejected-bg transition-colors cursor-pointer"
                       >
-                        Delete
+                        <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
                       </button>
                     </td>
                   </tr>
@@ -690,223 +646,116 @@ export const DsaTracker: React.FC = () => {
             </table>
           </div>
         )}
-      </div>
+      </Panel>
 
-      {/* Add Problem Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-lg font-bold text-slate-100">
-                Log Completed Problem
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-200 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleAddProblem} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Problem Title
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Two Sum"
-                  value={formData.problemTitle}
-                  onChange={(e) =>
-                    setFormData({ ...formData, problemTitle: e.target.value })
-                  }
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Problem URL
-                </label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://leetcode.com/problems/..."
-                  value={formData.problemUrl}
-                  onChange={(e) =>
-                    setFormData({ ...formData, problemUrl: e.target.value })
-                  }
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Difficulty
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['EASY', 'MEDIUM', 'HARD'] as const).map((diff) => (
-                    <button
-                      key={diff}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, difficulty: diff })}
-                      className={`py-2 text-xs font-bold rounded-lg border transition-all ${
-                        formData.difficulty === diff
-                          ? diff === 'EASY'
-                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-400'
-                            : diff === 'MEDIUM'
-                            ? 'bg-amber-500/20 border-amber-400 text-amber-400'
-                            : 'bg-rose-500/20 border-rose-400 text-rose-400'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      {diff}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Category
-                </label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                >
-                  {CATEGORIES.filter((c) => c !== 'All').map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Language
-                </label>
-                <select
-                  value={formData.language}
-                  onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                >
-                  {PROGRAMMING_LANGUAGES.map((lang) => (
-                    <option key={lang} value={lang}>
-                      {lang}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {formData.language === 'Other' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                    Custom Language
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Specify language..."
-                    value={formData.customLanguage}
-                    onChange={(e) =>
-                      setFormData({ ...formData, customLanguage: e.target.value })
-                    }
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all disabled:opacity-50"
-                >
-                  {isSubmitting ? 'Saving...' : 'Save Log'}
-                </button>
-              </div>
-            </form>
+      {/* Log Problem Modal */}
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Log Completed Problem"
+      >
+        <form onSubmit={handleAddProblem} className="space-y-4">
+          <Input
+            label="Problem title"
+            required
+            placeholder="e.g. Two Sum"
+            value={formData.problemTitle}
+            onChange={(e) => setFormData({ ...formData, problemTitle: e.target.value })}
+          />
+          <Input
+            label="Problem URL"
+            type="url"
+            required
+            placeholder="https://leetcode.com/problems/..."
+            value={formData.problemUrl}
+            onChange={(e) => setFormData({ ...formData, problemUrl: e.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Difficulty"
+              value={formData.difficulty}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  difficulty: e.target.value as 'EASY' | 'MEDIUM' | 'HARD',
+                })
+              }
+            >
+              <option value="EASY">Easy</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HARD">Hard</option>
+            </Select>
+            <Select
+              label="Topic"
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            >
+              {CATEGORIES.filter((c) => c !== 'All').map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </Select>
           </div>
-        </div>
-      )}
+          <Select
+            label="Language"
+            value={formData.language}
+            onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+          >
+            {PROGRAMMING_LANGUAGES.map((lang) => (
+              <option key={lang} value={lang}>
+                {lang}
+              </option>
+            ))}
+          </Select>
+          {formData.language === 'Other' && (
+            <Input
+              label="Custom language"
+              placeholder="Specify language..."
+              value={formData.customLanguage}
+              onChange={(e) => setFormData({ ...formData, customLanguage: e.target.value })}
+            />
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save log'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Add Platform Link Modal */}
-      {isLinkModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-lg font-bold text-slate-100">
-                Add Platform Profile Link
-              </h3>
-              <button
-                onClick={() => setIsLinkModalOpen(false)}
-                className="text-slate-400 hover:text-slate-200 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleAddPlatformLink} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Platform Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. LeetCode, Codeforces, HackerRank"
-                  value={newLinkData.name}
-                  onChange={(e) =>
-                    setNewLinkData({ ...newLinkData, name: e.target.value })
-                  }
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
-                  Profile URL
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="https://leetcode.com/u/yourusername/"
-                  value={newLinkData.url}
-                  onChange={(e) =>
-                    setNewLinkData({ ...newLinkData, url: e.target.value })
-                  }
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsLinkModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all"
-                >
-                  Add Link
-                </button>
-              </div>
-            </form>
+      <Modal
+        open={isLinkModalOpen}
+        onClose={() => setIsLinkModalOpen(false)}
+        title="Add Coding Profile"
+      >
+        <form onSubmit={handleAddPlatformLink} className="space-y-4">
+          <Input
+            label="Platform name"
+            required
+            placeholder="e.g. LeetCode, Codeforces"
+            value={newLinkData.name}
+            onChange={(e) => setNewLinkData({ ...newLinkData, name: e.target.value })}
+          />
+          <Input
+            label="Profile URL"
+            required
+            placeholder="https://leetcode.com/u/handle/"
+            value={newLinkData.url}
+            onChange={(e) => setNewLinkData({ ...newLinkData, url: e.target.value })}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setIsLinkModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit">Add link</Button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
     </div>
   );
 };

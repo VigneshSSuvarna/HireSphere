@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
+import { CheckCircle2, FileText, Upload } from 'lucide-react';
 import type { AtsScanResult } from '@hiresphere/shared';
 import { api } from './lib/api';
 import { useToast } from './components/Toast';
 import { CardSkeleton } from './components/Skeleton';
+import { Button, EmptyState, PageHeader, Panel, Textarea } from './components/ui';
 
 export default function ResumeScanner() {
   const { showToast } = useToast();
@@ -19,23 +21,22 @@ export default function ResumeScanner() {
     try {
       const res = await api.get<{ scans: AtsScanResult[] }>('/api/resume/scans');
       setHistory(res.scans || []);
-      if (!activeScan && res.scans?.length) {
-        setActiveScan(res.scans[0]);
+      if (res.scans?.length) {
+        setActiveScan((prev) => prev || res.scans[0]);
       }
     } catch {
-      // ignore initial history load errors silently
+      // ignore initial history load errors
     } finally {
       setLoadingHistory(false);
     }
-  }, [activeScan]);
+  }, []);
 
   useEffect(() => {
     loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadHistory]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
+    if (e.target.files?.[0]) {
       setFile(e.target.files[0]);
       setError(null);
     }
@@ -66,24 +67,29 @@ export default function ResumeScanner() {
     }
   };
 
-  const score = activeScan?.score ?? 0;
-  const radius = 52;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference - (score / 100) * circumference;
+  const breakdownBars = activeScan
+    ? [
+        { label: 'Sections (Edu, Exp, Projects, Skills)', score: activeScan.breakdown.sections.score, max: activeScan.breakdown.sections.max },
+        { label: 'Contact Information', score: activeScan.breakdown.contactInfo.score, max: activeScan.breakdown.contactInfo.max },
+        { label: `Length (${activeScan.breakdown.length.wordCount} words)`, score: activeScan.breakdown.length.score, max: activeScan.breakdown.length.max },
+        { label: `Action Verbs (${activeScan.breakdown.actionVerbs.count})`, score: activeScan.breakdown.actionVerbs.score, max: activeScan.breakdown.actionVerbs.max },
+        { label: `Quantified Metrics (${activeScan.breakdown.quantifiedAchievements.count})`, score: activeScan.breakdown.quantifiedAchievements.score, max: activeScan.breakdown.quantifiedAchievements.max },
+        { label: 'Formatting Hygiene', score: activeScan.breakdown.formatting.score, max: activeScan.breakdown.formatting.max },
+        ...(activeScan.breakdown.keywordMatch
+          ? [{ label: 'Job Description Keyword Match', score: activeScan.breakdown.keywordMatch.score, max: activeScan.breakdown.keywordMatch.max }]
+          : []),
+      ]
+    : [];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-10">
-      <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 space-y-6">
-        <div>
-          <h2 className="text-2xl font-extrabold text-purple-600 dark:text-purple-400">
-            ATS Resume Scanner
-          </h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-            Upload your PDF resume (max 5MB) and optionally paste a job description for keyword matching.
-          </p>
-        </div>
+    <div className="max-w-5xl mx-auto space-y-6 pb-8">
+      <PageHeader
+        title="ATS Resume Scanner"
+        description="Deterministic rule-based check for sections, contact info, metrics, and job-description keywords."
+      />
 
-        <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-8 text-center hover:border-purple-500 transition-colors bg-slate-50 dark:bg-slate-950/50">
+      <Panel className="space-y-5">
+        <div className="border border-dashed border-hairline rounded-[6px] p-6 text-center bg-subtle/40 hover:border-accent transition-colors">
           <input
             type="file"
             id="resume-upload"
@@ -91,207 +97,137 @@ export default function ResumeScanner() {
             className="hidden"
             onChange={handleFileChange}
           />
-          <label htmlFor="resume-upload" className="cursor-pointer flex flex-col items-center">
-            <span className="text-4xl mb-3">📄</span>
-            <span className="text-slate-800 dark:text-slate-200 font-medium hover:text-purple-500 transition-colors">
-              {file ? file.name : 'Click to upload a PDF resume'}
+          <label htmlFor="resume-upload" className="cursor-pointer flex flex-col items-center gap-2">
+            {file ? (
+              <FileText className="h-6 w-6 text-accent" strokeWidth={1.75} />
+            ) : (
+              <Upload className="h-6 w-6 text-muted" strokeWidth={1.75} />
+            )}
+            <span className="text-[14px] font-medium text-ink">
+              {file ? file.name : 'Select a PDF resume'}
             </span>
-            <span className="text-slate-500 text-xs mt-1">PDF only (Max 5MB)</span>
+            <span className="text-[12px] text-muted">Text-based PDF only, up to 5 MB</span>
           </label>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-            Target Job Description (Optional)
-          </label>
-          <textarea
-            rows={3}
-            value={jobDescription}
-            onChange={(e) => setJobDescription(e.target.value)}
-            placeholder="Paste the job description here to measure keyword alignment..."
-            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 resize-none"
-          />
-        </div>
+        <Textarea
+          label="Target job description (optional)"
+          rows={3}
+          value={jobDescription}
+          onChange={(e) => setJobDescription(e.target.value)}
+          placeholder="Paste a role description to measure keyword alignment..."
+        />
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/40 text-red-500 dark:text-red-300 p-3 rounded-lg text-sm">
+          <div className="p-3 rounded-[6px] bg-status-rejected-bg border border-status-rejected/25 text-[13px] text-status-rejected">
             {error}
           </div>
         )}
 
         <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={handleScan}
-            disabled={!file || isScanning}
-            className="px-6 py-3 rounded-lg font-bold transition-all shadow-lg bg-purple-600 hover:bg-purple-700 text-white shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isScanning ? 'Analyzing PDF...' : 'Run ATS Scan'}
-          </button>
+          <Button onClick={handleScan} disabled={!file || isScanning}>
+            {isScanning ? 'Scanning PDF...' : 'Run ATS scan'}
+          </Button>
         </div>
-      </div>
+      </Panel>
 
-      {/* Results */}
       {activeScan && !isScanning && (
-        <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-4">
+        <Panel className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-2 pb-4 border-b border-hairline">
             <div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-                Scan Report: {activeScan.fileName}
-              </h3>
-              <p className="text-xs text-slate-500">
-                Scanned on {new Date(activeScan.createdAt).toLocaleString()}
+              <h3 className="text-[16px] font-semibold text-ink">{activeScan.fileName}</h3>
+              <p className="font-mono text-[12px] text-muted mt-0.5">
+                {new Date(activeScan.createdAt).toLocaleString('en-IN')}
               </p>
             </div>
-          </div>
-
-          <div className="flex flex-col md:flex-row items-center gap-8">
-            {/* SVG Score Ring */}
-            <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
-              <svg className="w-36 h-36 -rotate-90" viewBox="0 0 120 120">
-                <circle
-                  cx="60"
-                  cy="60"
-                  r={radius}
-                  stroke="currentColor"
-                  strokeWidth="10"
-                  fill="transparent"
-                  className="text-slate-200 dark:text-slate-800"
-                />
-                <circle
-                  cx="60"
-                  cy="60"
-                  r={radius}
-                  stroke="currentColor"
-                  strokeWidth="10"
-                  fill="transparent"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={dashOffset}
-                  strokeLinecap="round"
-                  className={
-                    score >= 80
-                      ? 'text-emerald-500'
-                      : score >= 60
-                      ? 'text-amber-500'
-                      : 'text-red-500'
-                  }
-                />
-              </svg>
-              <div className="absolute text-center">
-                <span className="text-3xl font-extrabold text-slate-900 dark:text-white">
-                  {score}
-                </span>
-                <p className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
-                  / 100
-                </p>
-              </div>
-            </div>
-
-            {/* Breakdown Grid */}
-            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                <p className="text-xs text-slate-500">Sections</p>
-                <p className="font-bold text-slate-900 dark:text-slate-100">
-                  {activeScan.breakdown.sections.score} / {activeScan.breakdown.sections.max}
-                </p>
-              </div>
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                <p className="text-xs text-slate-500">Contact Info</p>
-                <p className="font-bold text-slate-900 dark:text-slate-100">
-                  {activeScan.breakdown.contactInfo.score} / {activeScan.breakdown.contactInfo.max}
-                </p>
-              </div>
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                <p className="text-xs text-slate-500">
-                  Length ({activeScan.breakdown.length.wordCount} words)
-                </p>
-                <p className="font-bold text-slate-900 dark:text-slate-100">
-                  {activeScan.breakdown.length.score} / {activeScan.breakdown.length.max}
-                </p>
-              </div>
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                <p className="text-xs text-slate-500">
-                  Action Verbs ({activeScan.breakdown.actionVerbs.count})
-                </p>
-                <p className="font-bold text-slate-900 dark:text-slate-100">
-                  {activeScan.breakdown.actionVerbs.score} / {activeScan.breakdown.actionVerbs.max}
-                </p>
-              </div>
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                <p className="text-xs text-slate-500">
-                  Quantified Metrics ({activeScan.breakdown.quantifiedAchievements.count})
-                </p>
-                <p className="font-bold text-slate-900 dark:text-slate-100">
-                  {activeScan.breakdown.quantifiedAchievements.score} /{' '}
-                  {activeScan.breakdown.quantifiedAchievements.max}
-                </p>
-              </div>
-              {activeScan.breakdown.keywordMatch && (
-                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                  <p className="text-xs text-slate-500">JD Keyword Match</p>
-                  <p className="font-bold text-slate-900 dark:text-slate-100">
-                    {activeScan.breakdown.keywordMatch.score} /{' '}
-                    {activeScan.breakdown.keywordMatch.max}
-                  </p>
-                </div>
-              )}
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-display text-[44px] leading-none font-medium text-ink tabular-nums">
+                {activeScan.score}
+              </span>
+              <span className="font-mono text-[13px] text-muted">/ 100</span>
             </div>
           </div>
 
-          <div className="space-y-2 pt-2">
-            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              Actionable Suggestions
-            </h4>
-            {activeScan.suggestions.map((tip, idx) => (
-              <div
-                key={idx}
-                className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-300"
-              >
-                • {tip}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Horizontal Breakdown Bars */}
+            <div className="space-y-3">
+              <h4 className="text-[13px] font-semibold text-ink">Score Breakdown</h4>
+              <div className="space-y-3">
+                {breakdownBars.map((bar) => {
+                  const pct = bar.max > 0 ? Math.round((bar.score / bar.max) * 100) : 0;
+                  return (
+                    <div key={bar.label} className="space-y-1">
+                      <div className="flex justify-between text-[12px]">
+                        <span className="text-muted">{bar.label}</span>
+                        <span className="font-mono text-ink tabular-nums">
+                          {bar.score}/{bar.max}
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-subtle overflow-hidden">
+                        <div
+                          className="h-full bg-accent rounded-full transition-all duration-150"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            </div>
+
+            {/* Suggestions Checklist */}
+            <div className="space-y-3">
+              <h4 className="text-[13px] font-semibold text-ink">Suggestions Checklist</h4>
+              <ul className="space-y-2">
+                {activeScan.suggestions.map((tip, idx) => (
+                  <li
+                    key={idx}
+                    className="flex items-start gap-2.5 p-2.5 rounded-[6px] bg-paper border border-hairline text-[13px] text-ink"
+                  >
+                    <CheckCircle2
+                      className="h-4 w-4 text-accent shrink-0 mt-0.5"
+                      strokeWidth={1.75}
+                    />
+                    <span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-        </div>
+        </Panel>
       )}
 
-      {/* Scan History */}
-      <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800">
-        <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4">
-          Scan History
-        </h3>
+      <Panel className="space-y-3">
+        <h3 className="text-[14px] font-semibold text-ink">Previous Scans</h3>
         {loadingHistory ? (
           <CardSkeleton rows={3} />
         ) : history.length === 0 ? (
-          <p className="text-sm text-slate-500">No scans yet. Upload a PDF above to get started.</p>
+          <EmptyState message="No previous resume scans recorded." />
         ) : (
-          <div className="space-y-2.5">
+          <div className="divide-y divide-hairline border border-hairline rounded-[6px]">
             {history.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setActiveScan(item)}
-                className={`w-full text-left p-4 rounded-xl border flex items-center justify-between transition-colors ${
-                  activeScan?.id === item.id
-                    ? 'bg-purple-500/10 border-purple-500/40'
-                    : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-purple-500/30'
+                className={`w-full text-left px-4 py-2.5 flex items-center justify-between gap-4 transition-colors cursor-pointer ${
+                  activeScan?.id === item.id ? 'bg-subtle' : 'bg-surface hover:bg-subtle/60'
                 }`}
               >
-                <div>
-                  <p className="font-semibold text-sm text-slate-900 dark:text-slate-100">
-                    {item.fileName}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {new Date(item.createdAt).toLocaleString()}
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-ink truncate">{item.fileName}</p>
+                  <p className="font-mono text-[11px] text-muted">
+                    {new Date(item.createdAt).toLocaleString('en-IN')}
                   </p>
                 </div>
-                <span className="text-sm font-extrabold text-purple-600 dark:text-purple-400">
-                  {item.score} / 100
+                <span className="font-mono text-[13px] font-semibold text-accent tabular-nums shrink-0">
+                  {item.score}/100
                 </span>
               </button>
             ))}
           </div>
         )}
-      </div>
+      </Panel>
     </div>
   );
 }
