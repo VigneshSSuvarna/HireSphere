@@ -1,61 +1,135 @@
 import 'dotenv/config';
-import './config';
 import express from 'express';
 import cors from 'cors';
-import { db, users } from './db/schema'; // ✅ Removed .js
-import { registerUser, loginUser } from './modules/users/user.controller'; // ✅ Removed .js
-import { logProblem, getUserProgress, deleteProblem } from './modules/dsa/dsa.controller';
-import { verifyToken } from './middleware/authGuard';
-import { eq } from 'drizzle-orm';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { eq, sql } from 'drizzle-orm';
+import { db } from './db/index.js';
+import { users } from './db/schema.js';
+import { registerUser, loginUser } from './modules/users/user.controller.js';
+import { logProblem, getUserProgress, updateProblem, deleteProblem } from './modules/dsa/dsa.controller.js';
+import { profileRouter } from './modules/profile/profile.routes.js';
+import { drivesRouter } from './modules/drives/drives.routes.js';
+import { applicationsRouter } from './modules/applications/applications.routes.js';
+import { studentsRouter } from './modules/students/students.routes.js';
+import { resumeRouter } from './modules/resume/resume.routes.js';
+import { statsRouter } from './modules/stats/stats.routes.js';
+import { eventsRouter } from './modules/events/events.routes.js';
+import { adminRouter } from './modules/admin/admin.routes.js';
+import { getJwtSecret, verifyToken, type AuthRequest } from './middleware/authGuard.js';
+
+// Fail fast if required secrets are missing
+getJwtSecret();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication requests, please try again later.' },
+});
+
 // Global Middleware
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+const configuredOrigins = (process.env.FRONTEND_URL || '')
   .split(',')
-  .map((o) => o.trim().replace(/\/$/, ''));
-app.use(cors({ origin: allowedOrigins }));
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const devOrigins =
+  process.env.NODE_ENV === 'production'
+    ? []
+    : [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
+      ];
+
+const allowedOrigins = new Set([...configuredOrigins, ...devOrigins]);
+if (allowedOrigins.size === 0) {
+  allowedOrigins.add('http://localhost:5173');
+}
+
+app.use(helmet());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} not allowed by CORS`));
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
-// API Routes
-app.post('/api/auth/register', registerUser);
-app.post('/api/auth/login', loginUser);
+// Auth Routes
+app.post('/api/auth/register', authLimiter, registerUser);
+app.post('/api/auth/login', authLimiter, loginUser);
 
-// DSA Progress Routes
-app.post('/api/dsa', verifyToken, logProblem);
-app.get('/api/dsa', verifyToken, getUserProgress);
-app.delete('/api/dsa/:id', verifyToken, deleteProblem);
-
-// Current User Route
-app.get('/api/auth/me', verifyToken, async (req: any, res) => {
+app.get('/api/auth/me', verifyToken, async (req: AuthRequest, res) => {
   try {
-    const userResult = await db
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const [user] = await db
       .select({
         id: users.id,
         email: users.email,
         role: users.role,
+        isActive: users.is_active,
       })
       .from(users)
-      .where(eq(users.id, req.user.id));
+      .where(eq(users.id, userId));
 
-    const user = userResult[0];
-
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
+    if (!user || !user.isActive) {
+      res.status(401).json({ error: 'User not found or inactive' });
       return;
     }
 
-    res.json({ user });
-  } catch (error: any) {
-    res.status(500).json({ error: "Failed to fetch user" });
+    res.json({ user: { id: user.id, email: user.email, role: user.role } });
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' });
+// DSA Progress Routes
+app.post('/api/dsa', verifyToken, logProblem);
+app.get('/api/dsa', verifyToken, getUserProgress);
+app.put('/api/dsa/:id', verifyToken, updateProblem);
+app.delete('/api/dsa/:id', verifyToken, deleteProblem);
+
+// Feature Module Routers
+app.use('/api/profile', profileRouter);
+app.use('/api', drivesRouter);
+app.use('/api', applicationsRouter);
+app.use('/api/students', studentsRouter);
+app.use('/api/resume', resumeRouter);
+app.use('/api/stats', statsRouter);
+app.use('/api/events', eventsRouter);
+app.use('/api/admin', adminRouter);
+
+// Health Check with real DB latency
+app.get('/api/health', async (_req, res) => {
+  const start = performance.now();
+  try {
+    await db.execute(sql`SELECT 1`);
+    const latencyMs = Math.round(performance.now() - start);
+    res.json({ status: 'ok', database: 'connected', latencyMs });
+  } catch {
+    const latencyMs = Math.round(performance.now() - start);
+    res.status(500).json({ status: 'error', database: 'disconnected', latencyMs });
+  }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 HireSphere server is live on http://localhost:${PORT}`);
+  console.log(`HireSphere server listening on http://localhost:${PORT}`);
 });

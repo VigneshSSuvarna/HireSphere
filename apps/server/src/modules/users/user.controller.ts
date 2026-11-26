@@ -1,67 +1,84 @@
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { db, users } from '../../db/schema'; // ✅ Perfect import path
 import { eq } from 'drizzle-orm';
-import { JWT_SECRET } from '../../config';
+import { loginSchema, registerSchema } from '@hiresphere/shared';
+import { db } from '../../db/index.js';
+import { users } from '../../db/schema.js';
+import { getJwtSecret } from '../../middleware/authGuard.js';
 
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, role } = req.body;
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: parsed.error.issues[0]?.message || 'Invalid registration payload',
+      });
+      return;
+    }
 
+    const { email, password } = parsed.data;
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     await db.insert(users).values({
       email,
       password_hash: hashedPassword,
-      role: role || 'STUDENT'
+      role: 'STUDENT',
     });
 
-    res.status(201).json({ message: "User registered successfully!" });
-  } catch (error: any) {
-    console.error("❌ REGISTRATION ERROR:", error); 
-    
-    // 🔥 Added the smart handler for Duplicate Emails
-    if (error.code === '23505') {
-      res.status(400).json({ error: "An account with this email already exists!" });
+    res.status(201).json({ message: 'User registered successfully!' });
+  } catch (error: unknown) {
+    const pgErr = error as { code?: string };
+    if (pgErr.code === '23505') {
+      res.status(400).json({ error: 'An account with this email already exists!' });
       return;
     }
-
-    res.status(500).json({ error: "Failed to register user", details: error.message });
+    res.status(500).json({ error: 'Failed to register user' });
   }
 };
 
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: parsed.error.issues[0]?.message || 'Invalid login payload',
+      });
+      return;
+    }
 
+    const { email, password } = parsed.data;
     const userResult = await db.select().from(users).where(eq(users.email, email));
     const user = userResult[0];
 
     if (!user) {
-      res.status(404).json({ error: "User not found" });
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+
+    if (!user.is_active) {
+      res.status(403).json({ error: 'Your account has been deactivated. Contact an administrator.' });
       return;
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      res.status(401).json({ error: "Invalid credentials" });
+      res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
     const token = jwt.sign(
-      { id: user.id, role: user.role }, 
-      JWT_SECRET, 
+      { id: user.id, role: user.role },
+      getJwtSecret(),
       { expiresIn: '1d' }
     );
 
     res.status(200).json({
       token,
-      user: { id: user.id, email: user.email, role: user.role }
+      user: { id: user.id, email: user.email, role: user.role },
     });
-  } catch (error: any) {
-    console.error("❌ LOGIN ERROR:", error); 
-    res.status(500).json({ error: "Login failed", details: error.message });
+  } catch {
+    res.status(500).json({ error: 'Login failed' });
   }
 };

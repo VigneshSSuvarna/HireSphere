@@ -1,100 +1,245 @@
+import { useEffect, useState, useCallback } from 'react';
+import type { AdminDashboardStats, UserRole } from '@hiresphere/shared';
+import { api } from './lib/api';
+import { useAuthStore } from './store/authStore';
+import { useToast } from './components/Toast';
+import { CardSkeleton, StatSkeleton } from './components/Skeleton';
+import {
+  Button,
+  DataTable,
+  EmptyState,
+  PageHeader,
+  Panel,
+  Select,
+  StatBlock,
+  StatusTag,
+  type DataTableColumn,
+} from './components/ui';
+
+interface AdminUserRow {
+  id: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  streak: number;
+  createdAt: string;
+}
+
+interface HealthResponse {
+  status: string;
+  database: string;
+  latencyMs: number;
+}
+
 export default function DeanDashboard() {
+  const currentUser = useAuthStore((s) => s.user);
+  const { showToast } = useToast();
+
+  const [stats, setStats] = useState<AdminDashboardStats | null>(null);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [statsRes, healthRes, usersRes] = await Promise.all([
+        api.get<AdminDashboardStats>('/api/stats/admin'),
+        api.get<HealthResponse>('/api/health', { skipAuth: true }),
+        api.get<{ users: AdminUserRow[] }>('/api/admin/users'),
+      ]);
+      setStats(statsRes);
+      setHealth(healthRes);
+      setUsers(usersRes.users || []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load admin overview');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRoleChange = async (userId: string, role: UserRole) => {
+    try {
+      await api.patch(`/api/admin/users/${userId}/role`, { role });
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role } : u)));
+      showToast(`Role updated to ${role}.`, 'success');
+      loadData();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to update role', 'error');
+    }
+  };
+
+  const handleToggleActive = async (user: AdminUserRow) => {
+    try {
+      const next = !user.isActive;
+      await api.patch(`/api/admin/users/${user.id}/active`, { isActive: next });
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, isActive: next } : u))
+      );
+      showToast(next ? 'Account activated.' : 'Account deactivated.', 'info');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to update status', 'error');
+    }
+  };
+
+  const totalUsers =
+    (stats?.usersByRole.STUDENT ?? 0) +
+    (stats?.usersByRole.COORDINATOR ?? 0) +
+    (stats?.usersByRole.ADMIN ?? 0);
+
+  const userColumns: DataTableColumn<AdminUserRow>[] = [
+    {
+      key: 'email',
+      header: 'User',
+      sortValue: (u) => u.email,
+      render: (u) => <span className="font-medium text-ink">{u.email}</span>,
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      render: (u) => (
+        <div className="w-40">
+          <Select
+            value={u.role}
+            aria-label={`Role for ${u.email}`}
+            onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
+          >
+            <option value="STUDENT">STUDENT</option>
+            <option value="COORDINATOR">COORDINATOR</option>
+            <option value="ADMIN">ADMIN</option>
+          </Select>
+        </div>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (u) => <StatusTag status={u.isActive ? 'ACTIVE' : 'INACTIVE'} />,
+    },
+    {
+      key: 'actions',
+      header: 'Action',
+      align: 'right',
+      render: (u) => (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={u.id === currentUser?.id}
+          onClick={() => handleToggleActive(u)}
+        >
+          {u.isActive ? 'Deactivate' : 'Activate'}
+        </Button>
+      ),
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      
-      <div>
-        <h2 className="text-3xl font-bold text-white tracking-tight">Dean & Admin Portal</h2>
-        <p className="text-slate-400 mt-1">Master controls, global student search, and live system health.</p>
-      </div>
+    <div className="max-w-7xl mx-auto space-y-6">
+      <PageHeader
+        title="Dean & Admin Overview"
+        description="Department placement outcomes, system database latency, and role governance."
+      />
 
-      {/* Top Row: System Health (Developer Dashboard Features) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-md flex items-center justify-between">
-          <div>
-            <h3 className="text-slate-400 text-sm font-medium">Node.js API Status</h3>
-            <p className="text-2xl font-bold text-white mt-1">Online</p>
-          </div>
-          <div className="h-12 w-12 rounded-full bg-green-500/10 flex items-center justify-center border border-green-500/20">
-            <span className="text-green-400 text-xl">🟢</span>
-          </div>
-        </div>
-        
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-md flex items-center justify-between">
-          <div>
-            <h3 className="text-slate-400 text-sm font-medium">Database (Neon PG)</h3>
-            <p className="text-2xl font-bold text-white mt-1">Connected</p>
-          </div>
-          <div className="h-12 w-12 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
-             <span className="text-blue-400 text-xl">🗄️</span>
-          </div>
-        </div>
-        
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-md flex items-center justify-between">
-          <div>
-            <h3 className="text-slate-400 text-sm font-medium">Avg Response Time</h3>
-            <p className="text-2xl font-bold text-white mt-1">124ms</p>
-          </div>
-          <div className="h-12 w-12 rounded-full bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
-             <span className="text-purple-400 text-xl">⚡</span>
-          </div>
-        </div>
-      </div>
+      {error && (
+        <Panel className="border-status-rejected/30 bg-status-rejected-bg flex items-center justify-between gap-4">
+          <p className="text-[13px] text-status-rejected">{error}</p>
+          <Button variant="secondary" size="sm" onClick={loadData}>
+            Retry
+          </Button>
+        </Panel>
+      )}
 
-      {/* Middle Section: Master Controls */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* Master Schedule Manager */}
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-md">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-semibold text-orange-300">Master Schedule Controls</h3>
-            <button className="bg-orange-600/20 text-orange-400 text-sm px-3 py-1.5 rounded hover:bg-orange-600/30 transition-colors border border-orange-500/20 font-medium">
-              + New Event
-            </button>
-          </div>
-          <div className="space-y-3">
-            <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 flex justify-between items-center">
-              <div>
-                <h4 className="text-white font-medium">Wipro Phase 1 Assessment</h4>
-                <p className="text-slate-400 text-xs mt-1">Sept 12 • All Branches</p>
+      {isLoading ? (
+        <StatSkeleton />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatBlock
+            label="Registered Users"
+            value={totalUsers}
+            delta={`${stats?.usersByRole.STUDENT ?? 0}S · ${stats?.usersByRole.COORDINATOR ?? 0}C · ${stats?.usersByRole.ADMIN ?? 0}A`}
+          />
+          <StatBlock
+            label="Open Drives"
+            value={stats?.openDrives ?? 0}
+            delta={`of ${stats?.totalDrives ?? 0} total`}
+          />
+          <StatBlock
+            label="Placed Students"
+            value={stats?.totalPlacements ?? 0}
+            deltaTone="positive"
+          />
+          <StatBlock
+            label="Database Latency"
+            value={health?.latencyMs !== undefined ? `${health.latencyMs} ms` : '—'}
+            delta={health?.database === 'connected' ? 'Connected' : 'Error'}
+            deltaTone={health?.database === 'connected' ? 'positive' : 'negative'}
+          />
+        </div>
+      )}
+
+      {/* Placement Rate by Department (Minimal Accent Chart) */}
+      <Panel className="space-y-4">
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-[14px] font-semibold text-ink">
+            Placement Rate by Department
+          </h3>
+          <span className="font-mono text-[12px] text-muted">Offers / Registered</span>
+        </div>
+
+        {isLoading ? (
+          <CardSkeleton rows={3} />
+        ) : !stats?.placementRateByDepartment.length ? (
+          <EmptyState message="No student profile data available yet." />
+        ) : (
+          <div className="space-y-3 border-t border-hairline pt-4">
+            {stats.placementRateByDepartment.map((dept) => (
+              <div key={dept.department} className="grid grid-cols-12 items-center gap-3">
+                <span className="col-span-2 sm:col-span-1 font-mono text-[12px] font-medium text-ink">
+                  {dept.department}
+                </span>
+                <div className="col-span-7 sm:col-span-9 h-2.5 rounded-[3px] bg-subtle border border-hairline overflow-hidden">
+                  <div
+                    className="h-full bg-accent transition-all duration-150"
+                    style={{ width: `${dept.rate}%` }}
+                  />
+                </div>
+                <span className="col-span-3 sm:col-span-2 text-right font-mono text-[12px] text-muted tabular-nums">
+                  {dept.placedStudents}/{dept.totalStudents} ({dept.rate}%)
+                </span>
               </div>
-              <div className="flex space-x-2">
-                <button className="text-slate-400 hover:text-blue-400 transition-colors px-2 text-sm">✏️ Edit</button>
-                <button className="text-slate-400 hover:text-red-400 transition-colors px-2 text-sm">🗑️ Remove</button>
-              </div>
-            </div>
-            <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 flex justify-between items-center">
-              <div>
-                <h4 className="text-white font-medium">Aptitude Training Batch B</h4>
-                <p className="text-slate-400 text-xs mt-1">Sept 15 • CS/IT Only</p>
-              </div>
-              <div className="flex space-x-2">
-                <button className="text-slate-400 hover:text-blue-400 transition-colors px-2 text-sm">✏️ Edit</button>
-                <button className="text-slate-400 hover:text-red-400 transition-colors px-2 text-sm">🗑️ Remove</button>
-              </div>
-            </div>
+            ))}
           </div>
+        )}
+      </Panel>
+
+      {/* User & Role Management */}
+      <Panel padded={false} className="overflow-hidden">
+        <div className="px-4 py-3 border-b border-hairline bg-subtle/40">
+          <h3 className="text-[14px] font-semibold text-ink">User &amp; Role Management</h3>
         </div>
-
-        {/* Global Student Tracker */}
-        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800 shadow-md">
-          <h3 className="text-lg font-semibold text-pink-300 mb-4">Global Student Tracker</h3>
-          <div className="flex gap-2 mb-4">
-            <input 
-              type="text" 
-              placeholder="Enter University Roll No. or Name..." 
-              className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-pink-500 transition-colors"
-            />
-            <button className="bg-pink-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-pink-700 transition-colors shadow-lg shadow-pink-500/20">
-              Search
-            </button>
+        {isLoading ? (
+          <div className="p-4">
+            <CardSkeleton rows={4} />
           </div>
-          <div className="h-32 border-2 border-dashed border-slate-800 rounded-lg flex items-center justify-center text-slate-500 text-sm px-6 text-center">
-            Search for any student across the campus to instantly view or edit their complete profile, attendance, and exam results.
-          </div>
-        </div>
-
-      </div>
-
+        ) : (
+          <DataTable
+            columns={userColumns}
+            rows={users}
+            rowKey={(u) => u.id}
+            emptyState={
+              <div className="p-4">
+                <EmptyState message="No users found." />
+              </div>
+            }
+          />
+        )}
+      </Panel>
     </div>
   );
 }
